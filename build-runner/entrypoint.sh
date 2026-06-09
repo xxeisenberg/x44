@@ -20,6 +20,9 @@ OUTPUT_DIR=${OUTPUT_DIR:-"dist"}
 if [ -d "$OUTPUT_DIR" ]; then
     echo "Copying build output to /workspace..."
     cp -r "$OUTPUT_DIR"/* /workspace/
+
+    chown -R $(stat -c '%u:%g' /workspace) /workspace/*
+
 else
     echo "Error: Build output directory '$OUTPUT_DIR' not found after build."
     exit 1
