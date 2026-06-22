@@ -1,0 +1,12 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "control-plane",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-14",
+  "queues": {
+    "producers": [{
+      "binding": "QUEUE",
+      "queue": "build-jobs",
+    }]
+  }
+}

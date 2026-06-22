@@ -2,11 +2,8 @@
 
 set -e
 
-mkdir -p /tmp/build
-cd /tmp/build
-
-echo "Cloning repository..."
-git clone --depth 1 "$REPO_URL" .
+echo "Cloning repository($BRANCH)..."
+git clone -b "$BRANCH" --single-branch --depth 1 "$REPO_URL" .
 
 echo "Installing dependencies..."
 npm install --production=false
@@ -17,15 +14,15 @@ eval "$BUILD_COMMAND"
 
 OUTPUT_DIR=${OUTPUT_DIR:-"dist"}
 
-if [ -d "$OUTPUT_DIR" ]; then
-    echo "Copying build output to /workspace..."
-    cp -r "$OUTPUT_DIR"/* /workspace/
+# if [ -d "$OUTPUT_DIR" ]; then
+#     echo "Copying build output to /workspace..."
+#     cp -r "$OUTPUT_DIR"/* /workspace/
 
-    chown -R $(stat -c '%u:%g' /workspace) /workspace/*
+#     chown -R $(stat -c '%u:%g' /workspace) /workspace/*
 
-else
-    echo "Error: Build output directory '$OUTPUT_DIR' not found after build."
-    exit 1
-fi
+# else
+#     echo "Error: Build output directory '$OUTPUT_DIR' not found after build."
+#     exit 1
+# fi
 
 echo "Build completed successfully."
