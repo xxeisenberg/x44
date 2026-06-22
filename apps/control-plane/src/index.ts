@@ -1,7 +1,9 @@
+import { Webhooks } from '@octokit/webhooks'
 import { Hono } from 'hono'
 
 type Bindings = {
   QUEUE: Queue
+  GITHUB_WEBHOOK_SECRET: string
 }
 
 const app = new Hono<{ Bindings: Bindings }>()
@@ -11,6 +13,29 @@ app.get('/', (c) => {
 })
 
 app.post('/webhook', async (c) => {
+  // Verify X-Hub-Signature-256
+
+  const payload = await c.req.text()
+
+  const sig = c.req.header('X-Hub-Signature-256')
+
+  if (!sig) {
+    return c.text('Missing signature header', 400)
+  }
+
+  if (!c.env.GITHUB_WEBHOOK_SECRET) {
+    return c.text('Internal server error.', 500)
+  }
+
+  const webhooks = new Webhooks({
+    secret: c.env.GITHUB_WEBHOOK_SECRET
+  })
+
+  if (!(await webhooks.verify(payload, sig))) {
+    return c.text("Unauthorized", 401)
+  }
+
+
   const event = c.req.header('x-github-event')
 
   if (event !== 'push') {
