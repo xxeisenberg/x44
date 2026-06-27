@@ -1,18 +1,36 @@
 import { Webhooks } from '@octokit/webhooks'
+import {drizzle} from 'drizzle-orm/d1'
 import { Hono } from 'hono'
+import * as schema from "./db/schema"
+import { createMiddleware } from 'hono/factory'
 
 type Bindings = {
   QUEUE: Queue
   GITHUB_WEBHOOK_SECRET: string
+  DB: D1Database
 }
 
-const app = new Hono<{ Bindings: Bindings }>()
+type Variables = {
+  db: ReturnType<typeof drizzle>
+}
+
+const dbMiddleware = createMiddleware<{ Bindings: Bindings; Variables: Variables }>(
+  async (c, next) => {
+    c.set('db', drizzle(c.env.DB, { schema }));
+    await next();
+  }
+);
+
+const app = new Hono<{ Bindings: Bindings, Variables: Variables }>()
+
+app.use('*', dbMiddleware)
 
 app.get('/', (c) => {
   return c.text('Hello Hono!')
 })
 
 app.post('/webhook', async (c) => {
+  const db = c.get('db')
   // Verify X-Hub-Signature-256
 
   const payload = await c.req.text()

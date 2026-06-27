@@ -8,9 +8,12 @@
   },
   "dependencies": {
     "@octokit/webhooks": "^14.2.0",
+    "drizzle-orm": "^0.45.2",
     "hono": "^4.12.25"
   },
   "devDependencies": {
+    "@types/node": "^24.13.2",
+    "drizzle-kit": "^0.31.10",
     "wrangler": "^4.4.0"
   }
 }

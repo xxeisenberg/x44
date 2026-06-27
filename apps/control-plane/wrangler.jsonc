@@ -3,6 +3,23 @@
   "name": "control-plane",
   "main": "src/index.ts",
   "compatibility_date": "2026-06-14",
+  "compatibility_flags": [
+        "nodejs_compat"
+    ],
+    "d1_databases": [
+        {
+            "binding": "DB",
+            "database_name": "x44",
+            "database_id": "e313ceea-a10d-48a8-a5fa-c969b7f40c9d",
+            "migrations_dir": "./migrations"
+        }
+    ],
+  "observability": {
+    "logs": {
+      "enabled": true,
+      "invocation_logs": true
+    }
+  },
   "queues": {
     "producers": [{
       "binding": "QUEUE",
