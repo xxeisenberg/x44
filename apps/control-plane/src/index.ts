@@ -1,8 +1,9 @@
 import { Webhooks } from '@octokit/webhooks'
-import {drizzle} from 'drizzle-orm/d1'
+import { drizzle } from 'drizzle-orm/d1'
 import { Hono } from 'hono'
 import * as schema from "./db/schema"
 import { createMiddleware } from 'hono/factory'
+import getAuth from './auth'
 
 type Bindings = {
   QUEUE: Queue
@@ -28,6 +29,11 @@ app.use('*', dbMiddleware)
 app.get('/', (c) => {
   return c.text('Hello Hono!')
 })
+
+app.on(["POST", "GET"], "/api/auth/*", (c) => {
+  const auth = getAuth(c)
+	return auth.handler(c.req.raw);
+});
 
 app.post('/webhook', async (c) => {
   const db = c.get('db')
