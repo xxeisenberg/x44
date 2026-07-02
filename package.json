@@ -4,7 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev:backend": "pnpm --filter control-plane run dev"
+    "dev:backend": "pnpm --filter control-plane run dev",
+    "dev:frontend": "pnpm --filter website run dev",
+    "dev": "pnpm dev:backend & pnpm dev:frontend"
   },
   "keywords": [],
   "author": "",

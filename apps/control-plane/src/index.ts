@@ -4,6 +4,7 @@ import { Hono } from 'hono'
 import * as schema from "./db/schema"
 import { createMiddleware } from 'hono/factory'
 import getAuth from './auth'
+import { cors } from 'hono/cors'
 
 type Bindings = {
   QUEUE: Queue
@@ -23,6 +24,18 @@ const dbMiddleware = createMiddleware<{ Bindings: Bindings; Variables: Variables
 );
 
 const app = new Hono<{ Bindings: Bindings, Variables: Variables }>()
+
+
+app.use(
+	"/api/auth/*",
+	cors({
+		origin: "http://localhost:1844",
+		allowMethods: ["POST", "GET", "OPTIONS"],
+		exposeHeaders: ["Content-Length"],
+		maxAge: 600,
+		credentials: true,
+	}),
+);
 
 app.use('*', dbMiddleware)
 
