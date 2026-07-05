@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "dev:backend": "pnpm --filter control-plane run dev",
-    "dev:frontend": "pnpm --filter website run dev",
+    "dev:frontend": "pnpm --filter web run dev --port 1844",
     "dev": "pnpm dev:backend & pnpm dev:frontend"
   },
   "keywords": [],

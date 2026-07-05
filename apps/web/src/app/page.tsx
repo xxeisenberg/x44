@@ -1,8 +1,8 @@
+"use client";
+
 import { ArrowRight } from 'lucide-react'
-import interceptImg from './assets/intercept.png'
-import isolateImg from './assets/isolate.png'
-import streamImg from './assets/stream.png'
-import { authClient } from './lib/auth-client'
+import { authClient } from '@/lib/auth-client'
+import { useState } from 'react';
 
 function GitHubIcon({ className }: { className?: string }) {
   return (
@@ -17,13 +17,7 @@ function GitHubIcon({ className }: { className?: string }) {
   )
 }
 
-async function handleLogin() {
-  const data = await authClient.signIn.social({
-    provider: "github",
-    callbackURL: import.meta.env.VITE_SITE_URL
-  })
-  console.log(JSON.stringify(data))
-}
+
 
 const architectureRows = [
   {
@@ -31,7 +25,7 @@ const architectureRows = [
     label: 'INTERCEPT',
     description:
       'GitHub triggers a webhook when you push code. A Cloudflare Worker catches it, checks the signature, and tells the VPS to start building.',
-    image: interceptImg,
+    image: '/intercept.png',
     alt: 'Vertical branch node line graphic',
   },
   {
@@ -39,7 +33,7 @@ const architectureRows = [
     label: 'ISOLATE',
     description:
       'The VPS spins up a fresh, isolated container to build your code. It keeps the build sandboxed so it doesn\'t crash the server or eat up all your RAM.',
-    image: isolateImg,
+    image: '/isolate.png',
     alt: 'Transparent isometric cube graphic',
   },
   {
@@ -47,12 +41,22 @@ const architectureRows = [
     label: 'STREAM',
     description:
       'Once the build finishes, the assets are pushed straight to Cloudflare R2 storage. When people visit your site, Cloudflare serves the files directly so your VPS doesn\'t have to do any heavy lifting.',
-    image: streamImg,
+    image: '/stream.png',
     alt: 'Minimalist global network dots graphic',
   },
 ]
 
-function App() {
+export default function Home() {
+  const [loginloading, setLoginLoading] = useState(false)
+  
+  async function handleLogin() {
+    setLoginLoading(true)
+    const data = await authClient.signIn.social({
+      provider: "github",
+      callbackURL: process.env.NEXT_PUBLIC_SITE_URL
+    })
+    setLoginLoading(false)
+  }
   return (
     <div className="min-h-screen bg-black text-white">
       {/* ── Navigation ── */}
@@ -76,7 +80,7 @@ function App() {
             className="group flex items-center gap-2.5 text-[13px] font-light tracking-widest uppercase text-white/40 transition-colors duration-300 hover:text-white active:text-white"
           >
             <GitHubIcon className="h-3.5 w-3.5" />
-            <span>Login via GitHub</span>
+            <span>{loginloading? "Logging in...":"Login via GitHub"}</span>
           </button>
         </div>
       </nav>
@@ -118,8 +122,8 @@ function App() {
                 }}
               />
 
-              <a
-                href="#deploy"
+              <button
+                onClick={handleLogin}
                 id="deploy-button"
                 className="relative z-10 inline-flex items-center gap-3 bg-white px-10 py-4 text-[13px] font-medium tracking-widest uppercase text-black"
               >
@@ -128,7 +132,7 @@ function App() {
                   className="h-3.5 w-3.5 transition-transform duration-500 group-hover:translate-x-1 group-active:translate-x-1"
                   strokeWidth={1.5}
                 />
-              </a>
+              </button>
             </div>
           </div>
         </div>
@@ -213,5 +217,3 @@ function App() {
     </div>
   )
 }
-
-export default App
