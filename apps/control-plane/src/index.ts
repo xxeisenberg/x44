@@ -1,99 +1,114 @@
-import { Webhooks } from '@octokit/webhooks'
-import { drizzle } from 'drizzle-orm/d1'
-import { Hono } from 'hono'
-import * as schema from "./db/schema"
-import { createMiddleware } from 'hono/factory'
-import getAuth from './auth'
-import { cors } from 'hono/cors'
+import { Webhooks } from "@octokit/webhooks";
+import { drizzle } from "drizzle-orm/d1";
+import { Hono } from "hono";
+import * as schema from "./db/schema";
+import { createMiddleware } from "hono/factory";
+import getAuth from "./auth";
+import { cors } from "hono/cors";
+import { protect } from "./auth-middleware";
+import { User } from "better-auth";
+import { eq } from "drizzle-orm";
 
 type Bindings = {
-  QUEUE: Queue
-  GITHUB_WEBHOOK_SECRET: string
-  DB: D1Database
-}
+  QUEUE: Queue;
+  GITHUB_WEBHOOK_SECRET: string;
+  DB: D1Database;
+};
 
 type Variables = {
-  db: ReturnType<typeof drizzle>
-}
+  db: ReturnType<typeof drizzle>;
+  user: User;
+  // session: Session
+};
 
-const dbMiddleware = createMiddleware<{ Bindings: Bindings; Variables: Variables }>(
-  async (c, next) => {
-    c.set('db', drizzle(c.env.DB, { schema }));
-    await next();
-  }
-);
-
-const app = new Hono<{ Bindings: Bindings, Variables: Variables }>()
-
-
-app.use(
-	"/api/auth/*",
-	cors({
-		origin: "http://localhost:1844",
-		allowMethods: ["POST", "GET", "OPTIONS"],
-		exposeHeaders: ["Content-Length"],
-		maxAge: 600,
-		credentials: true,
-	}),
-);
-
-app.use('*', dbMiddleware)
-
-app.get('/', (c) => {
-  return c.text('Hello Hono!')
-})
-
-app.on(["POST", "GET"], "/api/auth/*", (c) => {
-  const auth = getAuth(c)
-	return auth.handler(c.req.raw);
+const dbMiddleware = createMiddleware<{
+  Bindings: Bindings;
+  Variables: Variables;
+}>(async (c, next) => {
+  c.set("db", drizzle(c.env.DB, { schema }));
+  await next();
 });
 
-app.post('/webhook', async (c) => {
-  const db = c.get('db')
+const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
+
+app.use(
+  "/api/*",
+  cors({
+    origin: "http://localhost:1844",
+    allowMethods: ["POST", "GET", "OPTIONS"],
+    exposeHeaders: ["Content-Length"],
+    maxAge: 600,
+    credentials: true,
+  }),
+);
+
+app.use("/api/*", protect);
+
+app.use("*", dbMiddleware);
+
+app.get("/", (c) => {
+  return c.text("Alive.");
+});
+
+app.on(["POST", "GET"], "/api/auth/*", (c) => {
+  const auth = getAuth(c);
+  return auth.handler(c.req.raw);
+});
+
+app.get("/api/projects", async (c) => {
+  const db = c.get("db");
+  const user = c.get("user");
+  const projects = await db
+    .select()
+    .from(schema.projects)
+    .where(eq(schema.projects.user_id, user.id));
+  return c.json({ projects });
+});
+
+app.post("/webhook", async (c) => {
+  const db = c.get("db");
   // Verify X-Hub-Signature-256
 
-  const payload = await c.req.text()
+  const payload = await c.req.text();
 
-  const sig = c.req.header('X-Hub-Signature-256')
+  const sig = c.req.header("X-Hub-Signature-256");
 
   if (!sig) {
-    return c.text('Missing signature header', 400)
+    return c.text("Missing signature header", 400);
   }
 
   if (!c.env.GITHUB_WEBHOOK_SECRET) {
-    return c.text('Internal server error.', 500)
+    return c.text("Internal server error.", 500);
   }
 
   const webhooks = new Webhooks({
-    secret: c.env.GITHUB_WEBHOOK_SECRET
-  })
+    secret: c.env.GITHUB_WEBHOOK_SECRET,
+  });
 
   if (!(await webhooks.verify(payload, sig))) {
-    return c.text("Unauthorized", 401)
+    return c.text("Unauthorized", 401);
   }
 
+  const event = c.req.header("x-github-event");
 
-  const event = c.req.header('x-github-event')
-
-  if (event !== 'push') {
-    return c.text('We got nothing to do with this one.', 400)
+  if (event !== "push") {
+    return c.text("We got nothing to do with this one.", 400);
   }
 
-  const body = await c.req.json()
-  console.log('Received push event:', body)
-  const repo_url = body.repository.clone_url
-  const branch = body.ref.split('/').slice(-1)[0]
+  const body = await c.req.json();
+  console.log("Received push event:", body);
+  const repo_url = body.repository.clone_url;
+  const branch = body.ref.split("/").slice(-1)[0];
 
-
-  const deployment_id = crypto.randomUUID().slice(24) // Last 8 characters of a UUID for a short ID
+  const deployment_id = crypto.randomUUID().slice(24); // Last 8 characters of a UUID for a short ID
   const res = await c.env.QUEUE.send({
     repo_url,
     branch,
-    deployment_id
-  })
-  console.log('Enqueued build job:', res)
+    deployment_id,
+  });
+  console.log("Enqueued build job:", res);
   // TODO: Also notify the build worker
-  return c.json({ deployment_id })
-})
+  return c.json({ deployment_id });
+});
 
-export default app
+export default app;

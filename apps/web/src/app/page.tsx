@@ -62,7 +62,7 @@ export default function Home() {
       {/* ── Navigation ── */}
       <nav className="fixed top-0 left-0 right-0 z-50">
         <div 
-          className="absolute inset-0 -z-10 h-[140%] bg-gradient-to-b from-black/80 via-black/40 to-transparent backdrop-blur-md pointer-events-none"
+          className="absolute inset-0 -z-10 h-[140%] bg-linear-to-b from-black/80 via-black/40 to-transparent backdrop-blur-md pointer-events-none"
           style={{
             maskImage: 'linear-gradient(to bottom, black 0%, black 20%, rgba(0, 0, 0, 0.9) 40%, rgba(0, 0, 0, 0.7) 55%, rgba(0, 0, 0, 0.4) 72%, rgba(0, 0, 0, 0.15) 86%, transparent 100%)',
             WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 20%, rgba(0, 0, 0, 0.9) 40%, rgba(0, 0, 0, 0.7) 55%, rgba(0, 0, 0, 0.4) 72%, rgba(0, 0, 0, 0.15) 86%, transparent 100%)'
@@ -105,10 +105,10 @@ export default function Home() {
           <div className="mt-12 flex flex-col items-center gap-6 sm:mt-16">
             <div className="group relative inline-flex p-3 sm:p-4">
               {/* Lines */}
-              <div className="absolute top-0 left-[-1rem] right-[-1rem] h-[1px] bg-white/20 transition-colors duration-500 group-hover:bg-white/40 group-active:bg-white/40" />
-              <div className="absolute bottom-0 left-[-1rem] right-[-1rem] h-[1px] bg-white/20 transition-colors duration-500 group-hover:bg-white/40 group-active:bg-white/40" />
-              <div className="absolute left-0 top-[-1rem] bottom-[-1rem] w-[1px] bg-white/20 transition-colors duration-500 group-hover:bg-white/40 group-active:bg-white/40" />
-              <div className="absolute right-0 top-[-1rem] bottom-[-1rem] w-[1px] bg-white/20 transition-colors duration-500 group-hover:bg-white/40 group-active:bg-white/40" />
+              <div className="absolute top-0 -left-4 -right-4 h-px bg-white/20 transition-colors duration-500 group-hover:bg-white/40 group-active:bg-white/40" />
+              <div className="absolute bottom-0 -left-4 -right-4 h-px bg-white/20 transition-colors duration-500 group-hover:bg-white/40 group-active:bg-white/40" />
+              <div className="absolute left-0 -top-4 -bottom-4 w-px bg-white/20 transition-colors duration-500 group-hover:bg-white/40 group-active:bg-white/40" />
+              <div className="absolute right-0 -top-4 -bottom-4 w-px bg-white/20 transition-colors duration-500 group-hover:bg-white/40 group-active:bg-white/40" />
 
               {/* Bottom Right Dot */}
               <div className="absolute -bottom-3 -right-3 flex h-1.5 w-1.5 items-center justify-center rounded-full bg-white/30 transition-all border border-white/0 duration-500 group-hover:border group-hover:border-white/40 group-active:border group-active:border-white/40"/>
@@ -139,7 +139,7 @@ export default function Home() {
 
         {/* Scroll indicator */}
         <div className="absolute bottom-12 left-1/2 -translate-x-1/2">
-          <div className="h-10 w-px bg-gradient-to-b from-transparent via-charcoal to-transparent" />
+          <div className="h-10 w-px bg-linear-to-b from-transparent via-charcoal to-transparent" />
         </div>
       </section>
 

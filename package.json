@@ -6,7 +6,7 @@
   "scripts": {
     "dev:backend": "pnpm --filter control-plane run dev",
     "dev:frontend": "pnpm --filter web run dev --port 1844",
-    "dev": "pnpm dev:backend & pnpm dev:frontend"
+    "dev": "concurrently -n backend,frontend -c blue,green \"pnpm dev:backend\" \"pnpm dev:frontend\""
   },
   "keywords": [],
   "author": "",
@@ -18,5 +18,8 @@
       "onFail": "download"
     }
   },
-  "type": "module"
+  "type": "module",
+  "devDependencies": {
+    "concurrently": "^10.0.3"
+  }
 }
