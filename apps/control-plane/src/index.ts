@@ -41,18 +41,17 @@ app.use(
     credentials: true,
   }),
 );
+app.on(["POST", "GET"], "/api/auth/*", (c) => {
+  const auth = getAuth(c);
+  return auth.handler(c.req.raw);
+});
 
 app.use("/api/*", protect);
 
 app.use("*", dbMiddleware);
 
 app.get("/", (c) => {
-  return c.text("Alive.");
-});
-
-app.on(["POST", "GET"], "/api/auth/*", (c) => {
-  const auth = getAuth(c);
-  return auth.handler(c.req.raw);
+  return c.redirect("http://localhost:1844/dashboard");
 });
 
 app.get("/api/projects", async (c) => {
@@ -63,6 +62,42 @@ app.get("/api/projects", async (c) => {
     .from(schema.projects)
     .where(eq(schema.projects.user_id, user.id));
   return c.json({ projects });
+});
+
+// app.post("/api/projects", async (c) => {
+//   const db = c.get("db");
+//   const user = c.get("user");
+//   const body = await c.req.json()
+//   const res = await db.insert(schema.projects).values({
+//     user_id: user.id,
+//     name,
+//     repo_url
+//   })
+// })
+
+app.get("api/repos", async (c) => {
+  const db = c.get("db");
+  const user = c.get("user");
+  const token = await db
+    .select({ accessToken: schema.account.accessToken })
+    .from(schema.account)
+    .where(eq(schema.account.userId, user.id))
+    .then((res) => res[0]);
+  if (!token) {
+    return c.text("No token found", 401);
+  }
+  const res = await fetch("https://api.github.com/user/repos", {
+    headers: {
+      Authorization: `Bearer ${token.accessToken}`,
+      "User-Agent": "X44",
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2026-03-10",
+    },
+  });
+
+  const repos = await res.json();
+
+  return c.json({ repos });
 });
 
 app.post("/webhook", async (c) => {
