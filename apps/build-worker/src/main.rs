@@ -23,9 +23,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .layer(TraceLayer::new_for_http())
         .layer(middleware::from_fn(auth_middleware));
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:1844").await.unwrap();
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await.unwrap();
 
-    println!("Listening on http://0.0.0.0:1844");
+    println!("Listening on http://0.0.0.0:8080");
 
     axum::serve(listener, app).await.unwrap();
 
@@ -36,19 +36,34 @@ async fn build_handler() {
     match get_job_from_queue().await {
         Ok(queue_response) => {
             if !queue_response.success {
-                eprintln!("Failed to pull message from queue: {:?}", queue_response.errors);
+                eprintln!(
+                    "Failed to pull message from queue: {:?}",
+                    queue_response.errors
+                );
                 return;
             }
 
             if let Some(message) = queue_response.result.messages.first() {
                 println!("Received job with ID: {}", message.id);
                 println!("Message body: {:?}", message.body);
-                
+
                 let repo_url = &message.body.repo_url;
                 let deployment_id = &message.body.deployment_id;
                 let branch = &message.body.branch;
+                let root_dir = &message.body.root_dir;
+                let output_dir = &message.body.output_dir;
+                let build_command = &message.body.build_command;
 
-                if let Err(e) = run_build_process(&deployment_id, &repo_url, &branch, "output").await {
+                if let Err(e) = run_build_process(
+                    &deployment_id,
+                    &repo_url,
+                    &branch,
+                    &output_dir,
+                    &root_dir,
+                    &build_command,
+                )
+                .await
+                {
                     eprintln!("Build process failed: {}", e);
                     return;
                 }
@@ -61,7 +76,6 @@ async fn build_handler() {
                 if let Err(e) = acknowledge_message(&message.lease_id).await {
                     eprintln!("Failed to acknowledge message: {}", e);
                 }
-
             } else {
                 println!("No messages in the queue.");
             }
@@ -73,16 +87,33 @@ async fn build_handler() {
 async fn acknowledge_message(lease_id: &str) -> Result<(), reqwest::Error> {
     let client = reqwest::Client::new();
     let response = client
-        .post(format!("https://api.cloudflare.com/client/v4/accounts/{}/queues/{}/messages/ack", std::env::var("CLOUDFLARE_ACCOUNT_ID").expect("Cloudflare Account ID is not set."), std::env::var("QUEUE_ID").expect("Cloudflare Queue ID is not set.")))
-        .header("Authorization", format!("Bearer {}", std::env::var("CLOUDFLARE_API_TOKEN").expect("Cloudflare API Token is not set.")))
+        .post(format!(
+            "https://api.cloudflare.com/client/v4/accounts/{}/queues/{}/messages/ack",
+            std::env::var("CLOUDFLARE_ACCOUNT_ID").expect("Cloudflare Account ID is not set."),
+            std::env::var("QUEUE_ID").expect("Cloudflare Queue ID is not set.")
+        ))
+        .header(
+            "Authorization",
+            format!(
+                "Bearer {}",
+                std::env::var("CLOUDFLARE_API_TOKEN").expect("Cloudflare API Token is not set.")
+            ),
+        )
         .json(&serde_json::json!({ "lease_id": lease_id }))
         .send()
         .await?;
 
     if response.status().is_success() {
-        println!("Message with lease ID {} acknowledged successfully.", lease_id);
+        println!(
+            "Message with lease ID {} acknowledged successfully.",
+            lease_id
+        );
     } else {
-        eprintln!("Failed to acknowledge message with lease ID {}. Status: {}", lease_id, response.status());
+        eprintln!(
+            "Failed to acknowledge message with lease ID {}. Status: {}",
+            lease_id,
+            response.status()
+        );
     }
 
     Ok(())
@@ -91,12 +122,22 @@ async fn acknowledge_message(lease_id: &str) -> Result<(), reqwest::Error> {
 async fn get_job_from_queue() -> Result<models::QueueResponse, reqwest::Error> {
     let client = reqwest::Client::new();
     let response = client
-        .post(format!("https://api.cloudflare.com/client/v4/accounts/{}/queues/{}/messages/pull", std::env::var("CLOUDFLARE_ACCOUNT_ID").expect("Cloudflare Account ID is not set."), std::env::var("QUEUE_ID").expect("Cloudflare Queue ID is not set.")))
-        .header("Authorization", format!("Bearer {}", std::env::var("CLOUDFLARE_API_TOKEN").expect("Cloudflare API Token is not set.")))
+        .post(format!(
+            "https://api.cloudflare.com/client/v4/accounts/{}/queues/{}/messages/pull",
+            std::env::var("CLOUDFLARE_ACCOUNT_ID").expect("Cloudflare Account ID is not set."),
+            std::env::var("QUEUE_ID").expect("Cloudflare Queue ID is not set.")
+        ))
+        .header(
+            "Authorization",
+            format!(
+                "Bearer {}",
+                std::env::var("CLOUDFLARE_API_TOKEN").expect("Cloudflare API Token is not set.")
+            ),
+        )
         .send()
         .await?;
 
-    let data : models::QueueResponse = response.json().await?;
+    let data: models::QueueResponse = response.json().await?;
 
     Ok(data)
 }
@@ -133,6 +174,8 @@ async fn run_build_process(
     repo_url: &str,
     branch: &str,
     output_dir: &str,
+    root_dir: &str,
+    build_command: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     println!("Starting deployment with ID: {}", deployment_id);
 
@@ -146,6 +189,10 @@ async fn run_build_process(
             &format!("REPO_URL={}", repo_url),
             "-e",
             &format!("BRANCH={}", branch),
+            "-e",
+            &format!("BUILD_COMMAND={}", build_command),
+            "-e",
+            &format!("ROOT_DIR={}", root_dir),
             "-v",
             &format!("output:/workspace/{}", output_dir),
             "custom-builder",

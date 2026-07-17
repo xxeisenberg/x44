@@ -5,6 +5,9 @@ set -e
 echo "Cloning repository($BRANCH)..."
 git clone -b "$BRANCH" --single-branch --depth 1 "$REPO_URL" .
 
+echo "Changing directory to $ROOT_DIR"
+cd $ROOT_DIR
+
 echo "Installing dependencies..."
 npm install --production=false
 

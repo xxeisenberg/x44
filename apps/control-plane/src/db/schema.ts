@@ -1,54 +1,64 @@
 import { relations, sql } from "drizzle-orm";
 import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
-export const projects = sqliteTable('projects', 
+export const projects = sqliteTable(
+  "projects",
   {
-    id: text('id').$defaultFn(() => crypto.randomUUID()).primaryKey(),
-    user_id: text('user_id').notNull().references(() => user.id, {onDelete: "cascade"}),
-    name: text('name').notNull(),
-    repo_url: text('repo_url').notNull().unique(),
-    build_command: text('build_command').notNull().default('npm run build'),
-    root_dir: text('root_dir').notNull().default(''),
-    output_directory: text('output_directory').notNull().default('dist'),
-    subdomain: text('subdomain').notNull().unique(),
-    branches: text('branches', { mode: 'json' }).$type<string[]>().notNull(),
+    id: text("id")
+      .$defaultFn(() => crypto.randomUUID())
+      .primaryKey(),
+    user_id: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    repo_url: text("repo_url").notNull().unique(),
+    build_command: text("build_command").notNull().default("npm run build"),
+    root_dir: text("root_dir").notNull().default(""),
+    output_directory: text("output_directory").notNull().default("dist"),
+    subdomain: text("subdomain").notNull().unique(),
+    branches: text("branches").notNull(),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
-    .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-    .notNull(),
-  updatedAt: integer("updated_at", { mode: "timestamp_ms" })
-    .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-    .$onUpdate(() => /* @__PURE__ */ new Date())
-    .notNull(),
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .notNull(),
+  },
+  (table) => [index("projects_user_id_idx").on(table.user_id)],
+);
+
+export const deployments = sqliteTable(
+  "deployments",
+  {
+    id: text("id")
+      .$defaultFn(() => crypto.randomUUID().slice(24))
+      .primaryKey(),
+    project_id: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    branch: text("branch").notNull(),
+    commit_hash: text("commit_hash").notNull(),
+    commit_message: text("commit_message").notNull(),
+    commit_author: text("commit_author").notNull(),
+    status: text("status", {
+      enum: ["queued", "building", "success", "failed"],
+    })
+      .default("queued")
+      .notNull(), // TODO: Add cancelled status and its functionality
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .notNull(),
   },
   (table) => [
-    index('projects_user_id_idx').on(table.user_id)
-  ]
-)
-
-export const deployments = sqliteTable('deployments', 
-  {
-    id: text('id').$defaultFn(() => crypto.randomUUID().slice(24)).primaryKey(),
-    project_id: text('project_id').notNull().references(() => projects.id, {onDelete: "cascade"}),
-    branch: text('branch').notNull(),
-    commit_hash: text('commit_hash').notNull(),
-    commit_message: text('commit_message').notNull(),
-    commit_author: text('commit_author').notNull(),
-    status: text('status', { enum: ['queued', 'building', 'success', 'failed'] }).default('queued').notNull(), // TODO: Add cancelled status and its functionality
-    createdAt: integer("created_at", { mode: "timestamp_ms" })
-    .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-    .notNull(),
-  updatedAt: integer("updated_at", { mode: "timestamp_ms" })
-    .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-    .$onUpdate(() => /* @__PURE__ */ new Date())
-    .notNull(),
-  },
-  (table) => [
-    index('deployments_project_id_idx').on(table.project_id),
-    index('deployments_status_idx').on(table.status)
-  ]
-)
-
-
+    index("deployments_project_id_idx").on(table.project_id),
+    index("deployments_status_idx").on(table.status),
+  ],
+);
 
 // ===BETTER-AUTH-SCHEMA========================================================================
 

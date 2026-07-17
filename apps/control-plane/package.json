@@ -10,6 +10,7 @@
     "db:push": "drizzle-kit push"
   },
   "dependencies": {
+    "@x44/types": "workspace:*",
     "@better-auth/infra": "^0.3.4",
     "@octokit/webhooks": "^14.2.0",
     "better-auth": "^1.6.22",
