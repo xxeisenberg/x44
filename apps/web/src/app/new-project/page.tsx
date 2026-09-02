@@ -160,15 +160,16 @@ export default function Page() {
                         if (!selectedRepo) return;
 
                         try {
-                          const response = await authClient.$fetch(
-                            "http://localhost:8787/api/branches",
-                            {
-                              method: "POST",
-                              body: JSON.stringify({
-                                repo_full_name: selectedRepo.full_name,
-                              }),
-                            },
-                          );
+                          const response: { data: { branches: string[] } } =
+                            await authClient.$fetch(
+                              "http://localhost:8787/api/branches",
+                              {
+                                method: "POST",
+                                body: JSON.stringify({
+                                  repo_full_name: selectedRepo.full_name,
+                                }),
+                              },
+                            );
 
                           if (response.data?.branches) {
                             setBranches(response.data.branches);

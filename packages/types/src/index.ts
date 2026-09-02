@@ -29,3 +29,12 @@ export type CommitInfo = {
     };
   };
 };
+
+export type QueueMessage = {
+  repo_url: string;
+  branch: string;
+  deployment_id: string;
+  root_dir: string;
+  output_dir: string;
+  build_command: string;
+};

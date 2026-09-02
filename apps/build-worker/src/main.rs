@@ -1,6 +1,6 @@
 use aws_sdk_s3 as s3;
 use axum::{
-    Router,
+    Json, Router,
     body::Body,
     http::{Request, StatusCode},
     middleware::{self, Next},
@@ -32,114 +32,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-async fn build_handler() {
-    match get_job_from_queue().await {
-        Ok(queue_response) => {
-            if !queue_response.success {
-                eprintln!(
-                    "Failed to pull message from queue: {:?}",
-                    queue_response.errors
-                );
-                return;
-            }
+async fn build_handler(Json(payload): Json<models::Payload>) -> Result<(), StatusCode> {
+    let repo_url = &payload.repo_url;
+    let deployment_id = &payload.deployment_id;
+    let branch = &payload.branch;
+    let root_dir = &payload.root_dir;
+    let output_dir = &payload.output_dir;
+    let build_command = &payload.build_command;
 
-            if let Some(message) = queue_response.result.messages.first() {
-                println!("Received job with ID: {}", message.id);
-                println!("Message body: {:?}", message.body);
-
-                let repo_url = &message.body.repo_url;
-                let deployment_id = &message.body.deployment_id;
-                let branch = &message.body.branch;
-                let root_dir = &message.body.root_dir;
-                let output_dir = &message.body.output_dir;
-                let build_command = &message.body.build_command;
-
-                if let Err(e) = run_build_process(
-                    &deployment_id,
-                    &repo_url,
-                    &branch,
-                    &output_dir,
-                    &root_dir,
-                    &build_command,
-                )
-                .await
-                {
-                    eprintln!("Build process failed: {}", e);
-                    return;
-                }
-
-                if let Err(e) = upload_build_output(&deployment_id).await {
-                    eprintln!("Failed to upload build output: {}", e);
-                    return;
-                }
-
-                if let Err(e) = acknowledge_message(&message.lease_id).await {
-                    eprintln!("Failed to acknowledge message: {}", e);
-                }
-            } else {
-                println!("No messages in the queue.");
-            }
-        }
-        Err(e) => eprintln!("Error fetching job from queue: {}", e),
+    if let Err(e) = run_build_process(
+        &deployment_id,
+        &repo_url,
+        &branch,
+        &output_dir,
+        &root_dir,
+        &build_command,
+    )
+    .await
+    {
+        eprintln!("Build process failed: {}", e);
+        return Err(StatusCode::INTERNAL_SERVER_ERROR);
     }
-}
 
-async fn acknowledge_message(lease_id: &str) -> Result<(), reqwest::Error> {
-    let client = reqwest::Client::new();
-    let response = client
-        .post(format!(
-            "https://api.cloudflare.com/client/v4/accounts/{}/queues/{}/messages/ack",
-            std::env::var("CLOUDFLARE_ACCOUNT_ID").expect("Cloudflare Account ID is not set."),
-            std::env::var("QUEUE_ID").expect("Cloudflare Queue ID is not set.")
-        ))
-        .header(
-            "Authorization",
-            format!(
-                "Bearer {}",
-                std::env::var("CLOUDFLARE_API_TOKEN").expect("Cloudflare API Token is not set.")
-            ),
-        )
-        .json(&serde_json::json!({ "lease_id": lease_id }))
-        .send()
-        .await?;
-
-    if response.status().is_success() {
-        println!(
-            "Message with lease ID {} acknowledged successfully.",
-            lease_id
-        );
-    } else {
-        eprintln!(
-            "Failed to acknowledge message with lease ID {}. Status: {}",
-            lease_id,
-            response.status()
-        );
+    if let Err(e) = upload_build_output(&deployment_id).await {
+        eprintln!("Failed to upload build output: {}", e);
+        return Err(StatusCode::INTERNAL_SERVER_ERROR);
     }
 
     Ok(())
-}
-
-async fn get_job_from_queue() -> Result<models::QueueResponse, reqwest::Error> {
-    let client = reqwest::Client::new();
-    let response = client
-        .post(format!(
-            "https://api.cloudflare.com/client/v4/accounts/{}/queues/{}/messages/pull",
-            std::env::var("CLOUDFLARE_ACCOUNT_ID").expect("Cloudflare Account ID is not set."),
-            std::env::var("QUEUE_ID").expect("Cloudflare Queue ID is not set.")
-        ))
-        .header(
-            "Authorization",
-            format!(
-                "Bearer {}",
-                std::env::var("CLOUDFLARE_API_TOKEN").expect("Cloudflare API Token is not set.")
-            ),
-        )
-        .send()
-        .await?;
-
-    let data: models::QueueResponse = response.json().await?;
-
-    Ok(data)
 }
 
 async fn upload_build_output(deployment_id: &str) -> Result<(), Box<dyn std::error::Error>> {
@@ -214,7 +134,7 @@ async fn run_build_process(
     let status = child.wait().expect("Failed to wait on child process");
     if !status.success() {
         eprintln!("Docker build process failed with status: {}", status);
-        return Ok(());
+        return Err(format!("Build process failed {}", status).into());
     }
 
     Ok(())

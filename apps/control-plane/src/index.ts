@@ -8,7 +8,13 @@ import { cors } from "hono/cors";
 import { protect } from "./auth-middleware";
 import { User } from "better-auth";
 import { eq } from "drizzle-orm";
-import { BranchResponse, CommitInfo, ProjectBody, Repo } from "@x44/types";
+import {
+  BranchResponse,
+  CommitInfo,
+  ProjectBody,
+  QueueMessage,
+  Repo,
+} from "@x44/types";
 
 type Bindings = {
   QUEUE: Queue;
@@ -150,7 +156,7 @@ app.post("/api/projects", async (c) => {
         "X-GitHub-Api-Version": "2026-03-10",
       },
       body: JSON.stringify({
-        name: "x44 Webhook",
+        name: "web",
         active: true,
         events: ["push"],
         config: {
@@ -193,8 +199,7 @@ app.post("/api/projects", async (c) => {
     .returning({ id: schema.deployments.id });
 
   // Sending the build job to the queue
-
-  const res = await c.env.QUEUE.send({
+  await c.env.QUEUE.send({
     repo_url: `https://github.com/${body.username}/${body.repoName}`,
     branch: body.branch,
     deployment_id: dep.id,
@@ -202,16 +207,6 @@ app.post("/api/projects", async (c) => {
     output_dir: body.outputDirectory,
     build_command: body.buildCommand,
   });
-
-  // Ping the build-worker
-  c.executionCtx.waitUntil(
-    fetch(`${c.env.BUILD_WORKER_URL}/build-it`, {
-      method: "POST",
-      headers: {
-        "x44-auth": c.env.BUILD_WORKER_SECRET,
-      },
-    }),
-  );
 
   return c.json({ id: dep.id });
 });
@@ -300,15 +295,84 @@ app.post("/webhook", async (c) => {
   const repo_url = body.repository.clone_url;
   const branch = body.ref.split("/").slice(-1)[0];
 
-  const deployment_id = crypto.randomUUID().slice(24); // Last 8 characters of a UUID for a short ID
-  const res = await c.env.QUEUE.send({
+  const [project] = await db
+    .select({
+      id: schema.projects.id,
+      output_dir: schema.projects.output_directory,
+      root_dir: schema.projects.root_dir,
+      build_command: schema.projects.build_command,
+      branch: schema.projects.branches,
+    })
+    .from(schema.projects)
+    .where(eq(schema.projects.repo_url, repo_url));
+
+  if (branch != project.branch) {
+    return c.text("Branch doesn't match", 400);
+  }
+
+  const [dep] = await db
+    .insert(schema.deployments)
+    .values({
+      branch,
+      commit_hash: body.after,
+      commit_message: body.head_commit.message,
+      commit_author: body.head_commit.author.name,
+      project_id: project.id,
+      status: "queued",
+    })
+    .returning({ id: schema.deployments.id });
+
+  await c.env.QUEUE.send({
     repo_url,
     branch,
-    deployment_id,
+    deployment_id: dep.id,
+    root_dir: project.root_dir || "./",
+    output_dir: project.output_dir || "dist",
+    build_command: project.build_command || "npm run build",
   });
-  console.log("Enqueued build job:", res);
-  // TODO: Also notify the build worker
-  return c.json({ deployment_id });
+
+  return c.json({ status: "success" });
 });
 
-export default app;
+export default {
+  fetch: app.fetch,
+  async queue(batch: MessageBatch<QueueMessage>, env: Bindings) {
+    const data = batch.messages[0].body;
+    const db = env.DB;
+
+    await db
+      .prepare(
+        `UPDATE "deployments" SET status = 'building', updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+      )
+      .bind(data.deployment_id)
+      .run();
+
+    const res = await fetch(`${env.BUILD_WORKER_URL}/build-it`, {
+      method: "POST",
+      body: JSON.stringify(data),
+      headers: {
+        "Content-Type": "application/json",
+        "x44-auth": `${env.BUILD_WORKER_SECRET}`,
+      },
+    });
+
+    if (res.status === 200) {
+      await db
+        .prepare(
+          `UPDATE "deployments" SET status = 'success', updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+        )
+        .bind(data.deployment_id)
+        .run();
+
+      batch.messages[0].ack();
+    } else {
+      await db
+        .prepare(
+          `UPDATE "deployments" SET status = 'failed', updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+        )
+        .bind(data.deployment_id)
+        .run();
+      batch.messages[0].ack();
+    }
+  },
+};

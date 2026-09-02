@@ -24,6 +24,12 @@
     "producers": [{
       "binding": "QUEUE",
       "queue": "build-jobs",
+    }],
+    "consumers": [{
+      "queue": "build-jobs",
+      "max_concurrency": 1,
+      "max_batch_size": 1,
+      "max_retries": 0
     }]
   }
 }
