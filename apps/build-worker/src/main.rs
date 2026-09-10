@@ -34,6 +34,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 async fn build_handler(Json(payload): Json<models::Payload>) -> Result<(), StatusCode> {
     let repo_url = &payload.repo_url;
+    let github_token = &payload.github_token;
     let deployment_id = &payload.deployment_id;
     let branch = &payload.branch;
     let root_dir = &payload.root_dir;
@@ -42,6 +43,7 @@ async fn build_handler(Json(payload): Json<models::Payload>) -> Result<(), Statu
 
     if let Err(e) = run_build_process(
         &deployment_id,
+        &github_token,
         &repo_url,
         &branch,
         &output_dir,
@@ -91,6 +93,7 @@ async fn upload_build_output(deployment_id: &str) -> Result<(), Box<dyn std::err
 
 async fn run_build_process(
     deployment_id: &str,
+    github_token: &str,
     repo_url: &str,
     branch: &str,
     output_dir: &str,
@@ -98,6 +101,8 @@ async fn run_build_process(
     build_command: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     println!("Starting deployment with ID: {}", deployment_id);
+    let output_path = std::env::current_dir()?.join("output");
+    std::fs::create_dir_all(&output_path)?;
 
     let mut child = Command::new("docker")
         .args([
@@ -113,8 +118,10 @@ async fn run_build_process(
             &format!("BUILD_COMMAND={}", build_command),
             "-e",
             &format!("ROOT_DIR={}", root_dir),
+            "-e",
+            &format!("GITHUB_TOKEN={}", github_token),
             "-v",
-            &format!("output:/workspace/{}", output_dir),
+            &format!("{}:/workspace/{}", output_path.display(), output_dir),
             "custom-builder",
         ])
         .stdout(std::process::Stdio::piped())
@@ -215,7 +222,9 @@ async fn upload_dir_to_r2(
                 .await
             {
                 Ok(_) => println!("Successfully uploaded {}", file_path.display()),
-                Err(e) => eprintln!("Failed to upload {}: {}", file_path.display(), e),
+                Err(e) => {
+                    return Err(format!("Failed to upload {}: {}", file_path.display(), e).into());
+                }
             };
         }
     }

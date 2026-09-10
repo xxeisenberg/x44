@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Payload {
     pub repo_url: String,
+    pub github_token: String,
     pub deployment_id: String,
     pub branch: String,
     pub root_dir: String,

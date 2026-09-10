@@ -201,6 +201,7 @@ app.post("/api/projects", async (c) => {
   // Sending the build job to the queue
   await c.env.QUEUE.send({
     repo_url: `https://github.com/${body.username}/${body.repoName}`,
+    github_token: token.accessToken,
     branch: body.branch,
     deployment_id: dep.id,
     root_dir: body.rootDirectory,
@@ -298,6 +299,7 @@ app.post("/webhook", async (c) => {
   const [project] = await db
     .select({
       id: schema.projects.id,
+      user_id: schema.projects.user_id,
       output_dir: schema.projects.output_directory,
       root_dir: schema.projects.root_dir,
       build_command: schema.projects.build_command,
@@ -322,8 +324,14 @@ app.post("/webhook", async (c) => {
     })
     .returning({ id: schema.deployments.id });
 
+  const [token] = await db
+    .select({ accessToken: schema.account.accessToken })
+    .from(schema.account)
+    .where(eq(schema.account.userId, project.user_id));
+
   await c.env.QUEUE.send({
     repo_url,
+    github_token: token.accessToken,
     branch,
     deployment_id: dep.id,
     root_dir: project.root_dir || "./",
