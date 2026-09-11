@@ -7,7 +7,7 @@ import getAuth from "./auth";
 import { cors } from "hono/cors";
 import { protect } from "./auth-middleware";
 import { User } from "better-auth";
-import { eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import {
   BranchResponse,
   CommitInfo,
@@ -146,7 +146,7 @@ app.post("/api/projects", async (c) => {
 
   // Register the Webhook for the repo
   const response = await fetch(
-    `https://api.github.com/repos/${body.repoName}/hooks`,
+    `https://api.github.com/repos/${body.username}/${body.repoName}/hooks`,
     {
       method: "POST",
       headers: {
@@ -209,7 +209,82 @@ app.post("/api/projects", async (c) => {
     build_command: body.buildCommand,
   });
 
-  return c.json({ id: dep.id });
+  return c.json({ project_id: proj.id, deployment_id: dep.id });
+});
+
+app.get("/api/projects/:id", async (c) => {
+  const db = c.get("db");
+  const user = c.get("user");
+  const id = c.req.param("id");
+  const [project] = await db
+    .select()
+    .from(schema.projects)
+    .where(
+      and(eq(schema.projects.id, id), eq(schema.projects.user_id, user.id)),
+    );
+  if (!project) {
+    return c.json({ error: "Project not found" }, 404);
+  }
+  return c.json({ project });
+});
+
+app.get("/api/projects/:id/deployments", async (c) => {
+  const db = c.get("db");
+  const user = c.get("user");
+  const id = c.req.param("id");
+
+  const [project] = await db
+    .select({ id: schema.projects.id })
+    .from(schema.projects)
+    .where(
+      and(eq(schema.projects.id, id), eq(schema.projects.user_id, user.id)),
+    );
+
+  if (!project) {
+    return c.json({ error: "Project not found" }, 404);
+  }
+
+  const deployments = await db
+    .select()
+    .from(schema.deployments)
+    .where(eq(schema.deployments.project_id, id))
+    .orderBy(desc(schema.deployments.createdAt));
+
+  return c.json({ deployments });
+});
+
+app.get("/api/projects/:id/deployments/:depId", async (c) => {
+  const db = c.get("db");
+  const user = c.get("user");
+  const id = c.req.param("id");
+  const depId = c.req.param("depId");
+
+  const [project] = await db
+    .select({ id: schema.projects.id })
+    .from(schema.projects)
+    .where(
+      and(eq(schema.projects.id, id), eq(schema.projects.user_id, user.id)),
+    );
+
+  if (!project) {
+    return c.json({ error: "Project not found" }, 404);
+  }
+
+  const [deployment] = await db
+    .select()
+    .from(schema.deployments)
+    .where(
+      and(
+        eq(schema.deployments.project_id, id),
+        eq(schema.deployments.id, depId),
+      ),
+    );
+
+  if (!deployment) {
+    return c.json({ error: "Deployment not found" }, 404);
+  }
+
+  return c.json({ deployment });
 });
 
 app.get("/api/repos", async (c) => {

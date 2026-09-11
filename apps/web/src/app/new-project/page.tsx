@@ -32,13 +32,16 @@ import { authClient } from "@/lib/auth-client";
 import { useForm } from "@tanstack/react-form";
 import { Repo } from "@x44/types";
 import { CheckIcon } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 export default function Page() {
+  const router = useRouter();
   const [repos, setRepos] = useState<Repo[]>([]);
   const [search, setSearch] = useState("");
   const [step, setStep] = useState<"repo" | "config">("repo");
   const [branches, setBranches] = useState<string[]>([]);
+  const [submitting, setSubmitting] = useState(false);
 
   const form = useForm({
     defaultValues: {
@@ -50,18 +53,35 @@ export default function Page() {
       outputDirectory: "dist",
     },
     onSubmit: async ({ value }) => {
-      const username = repos
-        .find((r) => r.name === value.repoName)
-        ?.full_name.split("/")[0];
-      const body = { ...value, username: username! };
-      const response = await authClient.$fetch(
-        "http://localhost:8787/api/projects",
-        {
+      try {
+        setSubmitting(true);
+        const username = repos
+          .find((r) => r.name === value.repoName)
+          ?.full_name.split("/")[0];
+        const body = { ...value, username: username! };
+        const baseUrl =
+          process.env.NEXT_PUBLIC_CONTROL_PANEL_URL || "http://localhost:8787";
+        const response: {
+          data: { project_id: string; deployment_id: string };
+        } = await authClient.$fetch(`${baseUrl}/api/projects`, {
           method: "POST",
           body: JSON.stringify(body),
-        },
-      );
-      console.log(response.data);
+        });
+
+        if (response.data.project_id && response.data.deployment_id) {
+          router.push(
+            `/dashboard/project/${response.data.project_id}/deployments/${response.data.deployment_id}`,
+          );
+          return;
+        } else {
+          throw new Error(
+            "Failed to create project. Response: " + JSON.stringify(response),
+          );
+        }
+      } catch (err) {
+        alert("Failed to create project. Please try again.");
+        setSubmitting(false);
+      }
     },
   });
 
@@ -324,7 +344,9 @@ export default function Page() {
                   >
                     Back
                   </Button>
-                  <Button type="submit">Deploy</Button>
+                  <Button type="submit" disabled={submitting}>
+                    {submitting ? "Deploying..." : "Deploy"}
+                  </Button>
                 </div>
               </CardFooter>
             </Card>

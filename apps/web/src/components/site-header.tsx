@@ -23,7 +23,7 @@ import {
   IconPlus,
   IconUserCircle,
 } from "@tabler/icons-react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 type User = {
   name: string;
@@ -33,81 +33,82 @@ type User = {
 
 export function SiteHeader({ user }: { user: User }) {
   const router = useRouter();
+  const pathname = usePathname();
+
+  const getBreadcrumbs = () => {
+    const items: { label: string; href?: string }[] = [
+      { label: "Dashboard", href: "/dashboard" },
+    ];
+
+    if (
+      !pathname ||
+      pathname === "/dashboard" ||
+      pathname === "/dashboard/projects"
+    ) {
+      items.push({ label: "Projects", href: "/dashboard/projects" });
+      return items;
+    }
+
+    const segments = pathname.split("/").filter(Boolean);
+    if (segments.includes("project")) {
+      items.push({ label: "Projects", href: "/dashboard/projects" });
+      const projectIdx = segments.indexOf("project");
+      const projectId = segments[projectIdx + 1];
+      if (projectId) {
+        items.push({
+          label: decodeURIComponent(projectId),
+          href: `/dashboard/project/${projectId}`,
+        });
+      }
+
+      const depIdx = segments.indexOf("deployments");
+      if (depIdx !== -1 && segments[depIdx + 1]) {
+        const depId = segments[depIdx + 1];
+        items.push({
+          label: `Deployment ${depId.length > 8 ? depId.slice(0, 7) : depId}`,
+          href: `/dashboard/project/${projectId}/deployments/${depId}`,
+        });
+      }
+    } else {
+      items.push({ label: "Projects", href: "/dashboard/projects" });
+    }
+
+    return items;
+  };
+
+  const breadcrumbs = getBreadcrumbs();
 
   return (
     <header className="flex h-(--header-height) shrink-0 items-center gap-2 border-b transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-(--header-height)">
       <div className="flex w-full items-center gap-1 px-4 lg:gap-2 lg:px-6">
         <Breadcrumb>
           <BreadcrumbList>
-            <BreadcrumbItem>
-              <BreadcrumbLink href="#">Dashboard</BreadcrumbLink>
-            </BreadcrumbItem>
-            <BreadcrumbSeparator />
-            <BreadcrumbItem>
-              <BreadcrumbLink href="#">Projects</BreadcrumbLink>
-            </BreadcrumbItem>
+            {breadcrumbs.map((item, idx) => (
+              <span
+                key={item.href || item.label}
+                className="inline-flex items-center gap-1.5 sm:gap-2.5"
+              >
+                {idx > 0 && <BreadcrumbSeparator />}
+                <BreadcrumbItem>
+                  <BreadcrumbLink
+                    href={item.href || "#"}
+                    className={
+                      idx === breadcrumbs.length - 1
+                        ? "text-foreground font-medium"
+                        : "text-muted-foreground hover:text-foreground"
+                    }
+                  >
+                    {item.label}
+                  </BreadcrumbLink>
+                </BreadcrumbItem>
+              </span>
+            ))}
           </BreadcrumbList>
         </Breadcrumb>
         <div className="ml-auto flex items-center gap-2">
           <Button onClick={() => router.push("/new-project")}>
             <IconPlus /> New Project
           </Button>
-          {/* <Dialog>
-            <form>
-              <DialogTrigger asChild>
-                <Button onClick={fetchRepos}>
-                  <IconPlus /> New Project
-                </Button>
-              </DialogTrigger>
-              <DialogContent
-                onInteractOutside={(e) => {
-                  console.log("outside", e.target);
-                  e.preventDefault();
-                }}
-              >
-                <DialogHeader>
-                  <DialogTitle>Create a new Project</DialogTitle>
-                  <DialogDescription>
-                    Connect your github repo and we'll handle the rest.
-                  </DialogDescription>
-                </DialogHeader>
-                <FieldGroup>
-                  <Field>
-                    <Label htmlFor="repo">GitHub Repository</Label>
-                    <Combobox
-                      name="repo"
-                      id="repo"
-                      items={repos}
-                      value={repo}
-                      onValueChange={setRepo}
-                      itemToStringValue={(repo) => repo.name}
-                    >
-                      <ComboboxInput placeholder="Select a repository" />
-                      <ComboboxContent>
-                        <ComboboxEmpty>No repositories found</ComboboxEmpty>
-                        <ComboboxList>
-                          {(item) => (
-                            <ComboboxItem key={item.name} value={item}>
-                              {item.name}
-                            </ComboboxItem>
-                          )}
-                        </ComboboxList>
-                      </ComboboxContent>
-                    </Combobox>
-                  </Field>
-                  <Field>
-                    <Label htmlFor="name">Name</Label>
-                    <Input name="name" id="name" />
-                  </Field>
-                </FieldGroup>
-              </DialogContent>
-            </form>
-          </Dialog> */}
-
-          {/* <Avatar>
-            <AvatarImage src="https://github.com/xxeisenberg.png" />
-            <AvatarFallback>CN</AvatarFallback>
-          </Avatar> */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               {/* <SidebarMenuButton
