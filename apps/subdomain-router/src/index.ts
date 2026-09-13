@@ -30,8 +30,8 @@ app.get("*", async (c) => {
     subdomain = parts[0];
   }
 
-  if (!subdomain) {
-    return c.status(404);
+  if (!subdomain || RESERVED_SUBDOMAINS.has(subdomain)) {
+    return c.text("Not found", 404);
   }
 
   const query = `
@@ -48,7 +48,7 @@ app.get("*", async (c) => {
     .first<{ deployment_id: string }>();
 
   if (!record) {
-    return c.status(404);
+    return c.text("Not found", 404);
   }
 
   const deploymentId = record.deployment_id;
@@ -85,7 +85,7 @@ app.get("*", async (c) => {
   }
 
   if (!object) {
-    return c.status(404);
+    return c.text("Not found", 404);
   }
 
   const headers = new Headers();
