@@ -1,0 +1,21 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "subdomain-router",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-12",
+  "r2_buckets": [
+    {
+      "binding": "R2",
+      "bucket_name": "x44-deployments",
+      "remote": true
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "x44",
+      "database_id": "e313ceea-a10d-48a8-a5fa-c969b7f40c9d",
+      "remote": true
+    }
+  ],
+}

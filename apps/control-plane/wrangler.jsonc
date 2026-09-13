@@ -11,7 +11,8 @@
             "binding": "DB",
             "database_name": "x44",
             "database_id": "e313ceea-a10d-48a8-a5fa-c969b7f40c9d",
-            "migrations_dir": "./migrations"
+            "migrations_dir": "./migrations",
+            "remote": true
         }
     ],
   "observability": {
