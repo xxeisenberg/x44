@@ -87,9 +87,9 @@ export default function Page() {
 
   useEffect(() => {
     async function fetchRepos() {
-      const response = await authClient.$fetch(
-        "http://localhost:8787/api/repos",
-      );
+      const baseUrl =
+        process.env.NEXT_PUBLIC_CONTROL_PANEL_URL || "http://localhost:8787";
+      const response = await authClient.$fetch(`${baseUrl}/api/repos`);
       if (response.error) {
         console.log(response.error);
         return;
@@ -180,16 +180,16 @@ export default function Page() {
                         if (!selectedRepo) return;
 
                         try {
+                          const baseUrl =
+                            process.env.NEXT_PUBLIC_CONTROL_PANEL_URL ||
+                            "http://localhost:8787";
                           const response: { data: { branches: string[] } } =
-                            await authClient.$fetch(
-                              "http://localhost:8787/api/branches",
-                              {
-                                method: "POST",
-                                body: JSON.stringify({
-                                  repo_full_name: selectedRepo.full_name,
-                                }),
-                              },
-                            );
+                            await authClient.$fetch(`${baseUrl}/api/branches`, {
+                              method: "POST",
+                              body: JSON.stringify({
+                                repo_full_name: selectedRepo.full_name,
+                              }),
+                            });
 
                           if (response.data?.branches) {
                             setBranches(response.data.branches);
