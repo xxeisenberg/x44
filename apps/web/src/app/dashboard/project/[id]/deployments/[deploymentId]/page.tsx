@@ -9,11 +9,12 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import ago from "s-ago";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { authClient } from "@/lib/auth-client";
+import { useBuildLogs } from "@/hooks/use-build-logs";
 
 type Project = {
   id: string;
@@ -78,6 +79,32 @@ export default function DeploymentDetailPage() {
   const [project, setProject] = useState<Project | null>(null);
   const [deployment, setDeployment] = useState<Deployment | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const activeDeploymentId =
+    deployment?.id || (deploymentId !== "latest" ? deploymentId : "");
+  const { logs, isStreaming } = useBuildLogs({
+    deploymentId: activeDeploymentId,
+    workerUrl:
+      process.env.NEXT_PUBLIC_BUILD_WORKER_URL || "http://localhost:8080",
+  });
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [autoScroll, setAutoScroll] = useState(true);
+
+  // Auto-scroll when new logs arrive
+  useEffect(() => {
+    if (autoScroll && scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [logs, autoScroll]);
+
+  // Pause auto-scroll if the user scrolls up to read something
+  const handleScroll = () => {
+    if (!scrollRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
+    const isAtBottom = scrollHeight - (scrollTop + clientHeight) < 40;
+    setAutoScroll(isAtBottom);
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -518,15 +545,39 @@ export default function DeploymentDetailPage() {
               )}
             </div>
 
-            {/* Terminal Body per user: "Keep it empty for now, i'll think about this also" */}
-            <div className="p-5 font-mono text-xs text-neutral-500 min-h-48 flex items-center justify-center bg-black/60">
-              <span className="text-neutral-600 text-xs italic">
-                {isBuilding
-                  ? effectiveStatus === "queued"
-                    ? "Waiting in build queue..."
-                    : "Waiting for logs..."
-                  : "No log output recorded"}
-              </span>
+            {/* Terminal Body with Live Streaming */}
+            <div
+              ref={scrollRef}
+              onScroll={handleScroll}
+              className="p-4 font-mono text-xs text-neutral-300 min-h-64 max-h-[520px] overflow-y-auto bg-black/60 space-y-1 select-text scrollbar-thin scrollbar-thumb-neutral-800"
+            >
+              {logs.length === 0 ? (
+                <div className="flex items-center justify-center h-48">
+                  <span className="text-neutral-600 text-xs italic">
+                    {isBuilding
+                      ? effectiveStatus === "queued"
+                        ? "Waiting in build queue..."
+                        : "Waiting for logs..."
+                      : "No log output recorded"}
+                  </span>
+                </div>
+              ) : (
+                logs.map((line, idx) => (
+                  <div
+                    key={idx}
+                    className={`leading-relaxed whitespace-pre-wrap break-all ${
+                      line.startsWith("[err]") ||
+                      line.startsWith("[x44 BUILD ERROR]")
+                        ? "text-rose-400"
+                        : line.startsWith("[x44]")
+                          ? "text-cyan-400 font-semibold"
+                          : "text-neutral-300"
+                    }`}
+                  >
+                    {line}
+                  </div>
+                ))
+              )}
             </div>
           </div>
 
