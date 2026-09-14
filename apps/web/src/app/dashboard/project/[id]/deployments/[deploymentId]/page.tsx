@@ -112,6 +112,52 @@ export default function DeploymentDetailPage() {
     isBuilding,
   });
 
+  const stepMetrics = useMemo(() => {
+    const metrics: Record<
+      string,
+      { status: "pending" | "running" | "done" | "failed"; duration?: string }
+    > = {
+      Repository: { status: "pending" },
+      Environment: { status: "pending" },
+      Install: { status: "pending" },
+      Build: { status: "pending" },
+      Upload: { status: "pending" },
+      Deploy: { status: "pending" },
+    };
+
+    for (const line of logs) {
+      // Matches: [x44:step:start] Install
+      const startMatch = line.match(/\[x44:step:start\]\s*(\w+)/);
+      if (startMatch && metrics[startMatch[1]]) {
+        metrics[startMatch[1]].status = "running";
+      }
+
+      // Matches: [x44:step:end] Install (__s)
+      const endMatch = line.match(/\[x44:step:end\]\s*(\w+)\s*\(([^)]+)\)/);
+      if (endMatch && metrics[endMatch[1]]) {
+        metrics[endMatch[1]].status = "done";
+        metrics[endMatch[1]].duration = endMatch[2];
+      }
+    }
+
+    if (effectiveStatus === "success") {
+      DEPLOYMENT_STEPS.forEach((step) => {
+        if (metrics[step].status !== "done") {
+          metrics[step].status = "done";
+        }
+      });
+    } else if (effectiveStatus === "failed") {
+      const runningStep = DEPLOYMENT_STEPS.find(
+        (s) => metrics[s].status === "running",
+      );
+      if (runningStep) {
+        metrics[runningStep].status = "failed";
+      }
+    }
+
+    return metrics;
+  }, [logs, effectiveStatus]);
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
 
@@ -460,25 +506,11 @@ export default function DeploymentDetailPage() {
           </span>
 
           <div className="mt-6 flex flex-col gap-4">
-            {DEPLOYMENT_STEPS.map((step, idx) => {
-              // Currently not tracking specific step completion time. So marking all the steps complete at once
-              let isDone = false;
-              let isCurrent = false;
-              let isStepFailed = false;
-
-              if (effectiveStatus === "success") {
-                isDone = true;
-              } else if (isBuilding) {
-                if (effectiveStatus === "queued") {
-                  if (idx === 0) isCurrent = true;
-                } else {
-                  if (idx < 2) isDone = true;
-                  else if (idx === 2) isCurrent = true;
-                }
-              } else if (effectiveStatus === "failed") {
-                if (idx < 3) isDone = true;
-                else if (idx === 3) isStepFailed = true;
-              }
+            {DEPLOYMENT_STEPS.map((step) => {
+              const metric = stepMetrics[step] || { status: "pending" };
+              const isDone = metric.status === "done";
+              const isCurrent = metric.status === "running";
+              const isFailed = metric.status === "failed";
 
               return (
                 <div
@@ -486,6 +518,7 @@ export default function DeploymentDetailPage() {
                   className="flex items-center justify-between text-xs"
                 >
                   <div className="flex items-center gap-3">
+                    {/* Status Icon */}
                     {isDone && (
                       <div className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/40">
                         <CheckCircle2 className="h-3.5 w-3.5" />
@@ -496,24 +529,25 @@ export default function DeploymentDetailPage() {
                         <RotateCw className="h-3 w-3 animate-spin" />
                       </div>
                     )}
-                    {isStepFailed && (
+                    {isFailed && (
                       <div className="flex h-5 w-5 items-center justify-center rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/40">
                         <XCircle className="h-3.5 w-3.5" />
                       </div>
                     )}
-                    {!isDone && !isCurrent && !isStepFailed && (
+                    {!isDone && !isCurrent && !isFailed && (
                       <div className="flex h-5 w-5 items-center justify-center rounded-full border border-neutral-800 text-neutral-600">
                         <span className="h-1.5 w-1.5 rounded-full bg-neutral-700" />
                       </div>
                     )}
 
+                    {/* Step Label */}
                     <span
                       className={`font-medium ${
                         isDone
                           ? "text-white"
                           : isCurrent
                             ? "text-amber-400"
-                            : isStepFailed
+                            : isFailed
                               ? "text-rose-400"
                               : "text-neutral-500"
                       }`}
@@ -522,14 +556,21 @@ export default function DeploymentDetailPage() {
                     </span>
                   </div>
 
-                  <span className="text-[11px] text-neutral-600">
-                    {isDone
-                      ? "✓"
-                      : isStepFailed
-                        ? "failed"
-                        : isCurrent
-                          ? "running"
-                          : "—"}
+                  {/* Phase Duration / Indicator */}
+                  <span className="font-mono text-[11px] text-neutral-500">
+                    {metric.duration ? (
+                      <span className="text-neutral-400">
+                        {metric.duration}
+                      </span>
+                    ) : isDone ? (
+                      <span className="text-neutral-600">✓</span>
+                    ) : isFailed ? (
+                      <span className="text-rose-400 font-sans">failed</span>
+                    ) : isCurrent ? (
+                      <span className="text-amber-400 font-sans">running</span>
+                    ) : (
+                      "—"
+                    )}
                   </span>
                 </div>
               );
