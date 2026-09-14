@@ -21,6 +21,12 @@
       "remote": true,
     },
   ],
+  "r2_buckets": [
+    {
+      "binding": "BUCKET",
+      "bucket_name": "x44-deployments",
+    },
+  ],
   "observability": {
     "logs": {
       "enabled": true,

@@ -18,8 +18,9 @@ import {
 
 type Bindings = {
   QUEUE: Queue;
-  GITHUB_WEBHOOK_SECRET: string;
   DB: D1Database;
+  BUCKET: R2Bucket;
+  GITHUB_WEBHOOK_SECRET: string;
   WORKER_URL: string;
   BUILD_WORKER_URL: string;
   BUILD_WORKER_SECRET: string;
@@ -375,6 +376,27 @@ app.post("/api/branches", async (c) => {
 
   return c.json({ branches });
 });
+
+app.get(
+  "/api/projects/:projectId/deployments/:deploymentId/logs",
+  async (c) => {
+    const { deploymentId } = c.req.param();
+
+    const file = await c.env.BUCKET.get(
+      `deployments/${deploymentId}/build.log`,
+    );
+
+    if (!file) {
+      return c.text("No logs found for this deployment", 404);
+    }
+
+    const text = await file.text();
+    return c.text(text, 200, {
+      "Content-Type": "text/plain; charset=utf-8",
+      "Cache-Control": "public, max-age=31536000, immutable",
+    });
+  },
+);
 
 app.post("/webhook", async (c) => {
   const db = c.get("db");

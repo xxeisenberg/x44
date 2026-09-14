@@ -3,21 +3,21 @@ use axum::{
     Json, Router,
     body::Body,
     extract::{Path, State},
-    http::{Request, StatusCode},
+    http::{Request, StatusCode, header},
     middleware::{self, Next},
     response::{
-        Response, Sse,
+        IntoResponse, Response, Sse,
         sse::{Event, KeepAlive},
     },
     routing::{get, post},
 };
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{collections::HashMap, convert::Infallible, sync::Arc, time::Duration};
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
     process::Command,
     sync::{RwLock, broadcast},
 };
-use tokio_stream::{Stream, StreamExt, wrappers::BroadcastStream};
+use tokio_stream::{StreamExt, wrappers::BroadcastStream};
 use tower_http::trace::TraceLayer;
 use walkdir::WalkDir;
 
@@ -63,7 +63,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 async fn log_handler(
     State(state): State<BuildState>,
     Path(deployment_id): Path<String>,
-) -> Result<Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>>, StatusCode> {
+) -> Result<impl IntoResponse, StatusCode> {
     let session = {
         let sessions = state.build_sessions.read().await;
         sessions.get(&deployment_id).cloned()
@@ -74,21 +74,29 @@ async fn log_handler(
     };
 
     let past_lines = session.history.read().await.clone();
-    let history_stream = tokio_stream::iter(past_lines).map(|line| Ok(Event::default().data(line)));
+    let history_stream =
+        tokio_stream::iter(past_lines).map(|line| Ok::<_, Infallible>(Event::default().data(line)));
 
     let rx = session.sender.subscribe();
     let live_stream = BroadcastStream::new(rx).filter_map(|res| match res {
-        Ok(line) => Some(Ok(Event::default().data(line))),
+        Ok(line) => Some(Ok::<_, Infallible>(Event::default().data(line))),
         Err(_) => None,
     });
 
     let combined_stream = history_stream.chain(live_stream);
 
-    Ok(Sse::new(combined_stream).keep_alive(
+    let sse = Sse::new(combined_stream).keep_alive(
         KeepAlive::new()
-            .interval(Duration::from_secs(10))
+            .interval(Duration::from_secs(3))
             .text("ping"),
-    ))
+    );
+
+    let headers = [
+        (header::CACHE_CONTROL, "no-cache, no-transform"),
+        (header::HeaderName::from_static("x-accel-buffering"), "no"),
+    ];
+
+    Ok((headers, sse))
 }
 
 async fn build_handler(

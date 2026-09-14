@@ -80,12 +80,36 @@ export default function DeploymentDetailPage() {
   const [deployment, setDeployment] = useState<Deployment | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const effectiveStatus = useMemo(() => {
+    if (forcedStatus) return forcedStatus;
+    if (deployment?.status) return deployment.status;
+    if (deploymentId === "failed") return "failed";
+    if (
+      deploymentId === "building" ||
+      deploymentId === "in-progress" ||
+      deploymentId === "queued"
+    )
+      return "building";
+    return "success";
+  }, [forcedStatus, deployment, deploymentId]);
+
+  const isBuilding =
+    effectiveStatus === "building" || effectiveStatus === "queued";
+
   const activeDeploymentId =
     deployment?.id || (deploymentId !== "latest" ? deploymentId : "");
+  const controlPlaneUrl =
+    process.env.NEXT_PUBLIC_CONTROL_PANEL_URL || "https://api.x44.diy";
+  const archivedLogUrl =
+    activeDeploymentId && projectId
+      ? `${controlPlaneUrl}/api/projects/${projectId}/deployments/${activeDeploymentId}/logs`
+      : undefined;
   const { logs, isStreaming } = useBuildLogs({
     deploymentId: activeDeploymentId,
     workerUrl:
-      process.env.NEXT_PUBLIC_BUILD_WORKER_URL || "http://localhost:8080",
+      process.env.NEXT_PUBLIC_BUILD_WORKER_URL || "https://build.x44.diy",
+    archivedLogUrl,
+    isBuilding,
   });
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -263,22 +287,6 @@ export default function DeploymentDetailPage() {
 
     return () => clearInterval(interval);
   }, [deployment?.status, deployment?.id, project?.id, projectId]);
-
-  const effectiveStatus = useMemo(() => {
-    if (forcedStatus) return forcedStatus;
-    if (deployment?.status) return deployment.status;
-    if (deploymentId === "failed") return "failed";
-    if (
-      deploymentId === "building" ||
-      deploymentId === "in-progress" ||
-      deploymentId === "queued"
-    )
-      return "building";
-    return "success";
-  }, [forcedStatus, deployment, deploymentId]);
-
-  const isBuilding =
-    effectiveStatus === "building" || effectiveStatus === "queued";
 
   const commitHash = useMemo(() => {
     if (deployment?.commit_hash) return deployment.commit_hash;
