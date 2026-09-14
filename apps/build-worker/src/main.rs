@@ -14,7 +14,7 @@ use walkdir::WalkDir;
 mod models;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     dotenvy::dotenv().expect("Failed to load .env file");
     tracing_subscriber::fmt::init();
 
@@ -35,7 +35,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 async fn build_handler(Json(payload): Json<models::Payload>) -> StatusCode {
     tokio::spawn(async move {
         let deployment_id = payload.deployment_id.clone();
-        let build_result = run_build_process(
+
+        let success = match run_build_process(
             &payload.deployment_id,
             &payload.github_token,
             &payload.repo_url,
@@ -44,16 +45,20 @@ async fn build_handler(Json(payload): Json<models::Payload>) -> StatusCode {
             &payload.root_dir,
             &payload.build_command,
         )
-        .await;
-
-        let mut success = false;
-        if let Err(e) = build_result {
-            eprintln!("Build process failed: {}", e);
-        } else if let Err(e) = upload_build_output(&payload.deployment_id).await {
-            eprintln!("Failed to upload build output: {}", e);
-        } else {
-            success = true;
-        }
+        .await
+        {
+            Ok(_) => match upload_build_output(&payload.deployment_id).await {
+                Ok(_) => true,
+                Err(e) => {
+                    eprintln!("Failed to upload build output: {}", e);
+                    false
+                }
+            },
+            Err(e) => {
+                eprintln!("Build process failed: {}", e);
+                false
+            }
+        };
 
         let status = if success { "success" } else { "failed" };
         send_callback(&deployment_id, status).await;
@@ -83,13 +88,15 @@ async fn send_callback(deployment_id: &str, status: &str) {
         .await;
 }
 
-async fn upload_build_output(deployment_id: &str) -> Result<(), Box<dyn std::error::Error>> {
+async fn upload_build_output(
+    deployment_id: &str,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     println!("Syncing output to R2...");
 
     let r2_client = setup_r2_client().await;
     let bucket_name = "x44-deployments";
 
-    if let Err(e) = upload_dir_to_r2(&r2_client, bucket_name, "./output", &deployment_id).await {
+    if let Err(e) = upload_dir_to_r2(&r2_client, bucket_name, "./output", deployment_id).await {
         eprintln!("Error uploading to R2: {}", e);
     } else {
         println!(
@@ -118,7 +125,7 @@ async fn run_build_process(
     output_dir: &str,
     root_dir: &str,
     build_command: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     println!("Starting deployment with ID: {}", deployment_id);
     let output_path = std::env::current_dir()?.join("output");
     std::fs::create_dir_all(&output_path)?;
@@ -208,7 +215,7 @@ async fn upload_dir_to_r2(
     bucket: &str,
     dir: &str,
     deployment_id: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let base_path = Path::new(dir);
 
     for entry in WalkDir::new(base_path).into_iter().filter_map(|e| e.ok()) {
