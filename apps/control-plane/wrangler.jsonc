@@ -3,34 +3,44 @@
   "name": "control-plane",
   "main": "src/index.ts",
   "compatibility_date": "2026-06-14",
-  "compatibility_flags": [
-        "nodejs_compat"
-    ],
-    "d1_databases": [
-        {
-            "binding": "DB",
-            "database_name": "x44",
-            "database_id": "af2c3655-5158-4f28-9b82-b80629ae6b86",
-            "migrations_dir": "./migrations",
-            "remote": true
-        }
-    ],
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "BETTER_AUTH_URL": "https://api.x44.diy",
+    "BUILD_WORKER_URL": "https://build.x44.diy",
+    "CLOUDFLARE_ACCOUNT_ID": "dde12782a95e9c3f4671ad2cd4423bf5",
+    "FRONTEND_URL": "https://x44.diy",
+    "WORKER_URL": "https://api.x44.diy",
+    "CLOUDFLARE_DATABASE_ID": "af2c3655-5158-4f28-9b82-b80629ae6b86",
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "x44",
+      "database_id": "af2c3655-5158-4f28-9b82-b80629ae6b86",
+      "migrations_dir": "./migrations",
+      "remote": true,
+    },
+  ],
   "observability": {
     "logs": {
       "enabled": true,
-      "invocation_logs": true
-    }
+      "invocation_logs": true,
+    },
   },
   "queues": {
-    "producers": [{
-      "binding": "QUEUE",
-      "queue": "build-jobs",
-    }],
-    "consumers": [{
-      "queue": "build-jobs",
-      "max_concurrency": 1,
-      "max_batch_size": 1,
-      "max_retries": 0
-    }]
-  }
+    "producers": [
+      {
+        "binding": "QUEUE",
+        "queue": "build-jobs",
+      },
+    ],
+    "consumers": [
+      {
+        "queue": "build-jobs",
+        "max_concurrency": 1,
+        "max_batch_size": 1,
+        "max_retries": 0,
+      },
+    ],
+  },
 }
