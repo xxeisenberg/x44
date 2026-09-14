@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { authClient } from "@/lib/auth-client";
 
 interface UseBuildLogsOptions {
   deploymentId?: string;
@@ -27,17 +28,22 @@ export function useBuildLogs({
 
     let isReconnecting = false;
 
-    // Case 1: Build already finished -> Read directly from R2
+    async function fetchArchivedLogs(url: string) {
+      try {
+        const res = await authClient.$fetch(url);
+        const text = typeof res === "string" ? res : (res as any)?.data || "";
+        if (text) {
+          setLogs(text.split("\n"));
+        }
+      } catch (err) {
+        console.error("Failed to load archived log:", err);
+      }
+    }
+
+    // Case 1: Build is already finished -> Fetch static log from R2 via control plane
     if (!isBuilding && archivedLogUrl) {
       setIsStreaming(false);
-      fetch(archivedLogUrl)
-        .then(async (res) => {
-          if (res.ok) {
-            const text = await res.text();
-            setLogs(text.split("\n"));
-          }
-        })
-        .catch((err) => console.error("Failed to load archived log:", err));
+      fetchArchivedLogs(archivedLogUrl);
       return;
     }
 
@@ -49,7 +55,7 @@ export function useBuildLogs({
     es.onmessage = (event) => {
       const line = event.data;
 
-      // Check for exit broadcast
+      // Handle build exit signal
       if (line.startsWith("[x44] Build finished with status:")) {
         const buildStatus = line.includes("success") ? "success" : "failed";
         setStatus(buildStatus);
@@ -71,17 +77,10 @@ export function useBuildLogs({
     es.onerror = async () => {
       isReconnecting = true;
 
-      // If build completed and the session was evicted from memory (404)
       if (archivedLogUrl) {
-        try {
-          const res = await fetch(archivedLogUrl);
-          if (res.ok) {
-            const staticLog = await res.text();
-            setLogs(staticLog.split("\n"));
-            es.close();
-            setIsStreaming(false);
-          }
-        } catch (_) {}
+        await fetchArchivedLogs(archivedLogUrl);
+        es.close();
+        setIsStreaming(false);
       }
     };
 

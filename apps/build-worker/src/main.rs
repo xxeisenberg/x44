@@ -29,6 +29,14 @@ struct BuildSession {
     history: Arc<RwLock<Vec<String>>>,
 }
 
+impl BuildSession {
+    async fn record(&self, msg: impl Into<String>) {
+        let msg = msg.into();
+        let _ = self.sender.send(msg.clone());
+        self.history.write().await.push(msg);
+    }
+}
+
 #[derive(Clone, Default)]
 struct BuildState {
     build_sessions: Arc<RwLock<HashMap<String, BuildSession>>>,
@@ -104,7 +112,6 @@ async fn build_handler(
     Json(payload): Json<models::Payload>,
 ) -> StatusCode {
     let deployment_id = payload.deployment_id.clone();
-
     let (sender, _) = broadcast::channel::<String>(1000);
 
     let build_session = BuildSession {
@@ -120,7 +127,7 @@ async fn build_handler(
 
     let state_clone = state.clone();
     tokio::spawn(async move {
-        let success = match run_build_process(
+        let build_res = run_build_process(
             &payload.deployment_id,
             &payload.github_token,
             &payload.repo_url,
@@ -130,15 +137,33 @@ async fn build_handler(
             &payload.build_command,
             build_session.clone(),
         )
-        .await
-        {
-            Ok(_) => match upload_build_output(&payload.deployment_id).await {
-                Ok(_) => true,
-                Err(e) => {
-                    eprintln!("Failed to upload build output: {}", e);
-                    false
+        .await;
+
+        let success = match build_res {
+            Ok(_) => {
+                // --- Step 5: Upload ---
+                build_session.record("[x44:step:start] Upload").await;
+                let upload_start = std::time::Instant::now();
+
+                let upload_res = upload_build_output(&payload.deployment_id).await;
+                let upload_dur = upload_start.elapsed().as_secs();
+
+                match upload_res {
+                    Ok(_) => {
+                        build_session
+                            .record(format!("[x44:step:end] Upload ({}s)", upload_dur))
+                            .await;
+                        true
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to upload build output: {}", e);
+                        build_session
+                            .record(format!("[x44 BUILD ERROR] Upload failed: {}", e))
+                            .await;
+                        false
+                    }
                 }
-            },
+            }
             Err(e) => {
                 eprintln!("Build process failed: {}", e);
                 false
@@ -147,34 +172,46 @@ async fn build_handler(
 
         let status = if success { "success" } else { "failed" };
 
-        let all_logs = build_session.history.read().await.join("\n");
+        // --- Step 6: Deploy ---
+        build_session.record("[x44:step:start] Deploy").await;
+        let deploy_start = std::time::Instant::now();
 
+        send_callback(&deployment_id, status).await;
+
+        let deploy_dur = deploy_start.elapsed().as_secs();
+        build_session
+            .record(format!("[x44:step:end] Deploy ({}s)", deploy_dur))
+            .await;
+
+        // Terminal exit signal
+        build_session
+            .record(format!("[x44] Build finished with status: {}", status))
+            .await;
+
+        // Sync complete log buffer to R2
+        let all_logs = build_session.history.read().await.join("\n");
         let s3client = setup_r2_client().await;
         let log_bytestream = aws_sdk_s3::primitives::ByteStream::from(all_logs.into_bytes());
+
         match s3client
             .put_object()
             .bucket("x44-deployments")
             .key(format!("deployments/{}/build.log", deployment_id))
             .body(log_bytestream)
-            .content_type("text/plain")
+            .content_type("text/plain; charset=utf-8")
             .send()
             .await
         {
-            Ok(_) => println!("Logs uploaded successfully"),
-            Err(e) => eprintln!("Failed to upload logs: {}", e),
+            Ok(_) => println!("Logs uploaded successfully to R2 for {}", deployment_id),
+            Err(e) => eprintln!("Failed to upload logs to R2: {}", e),
         };
 
-        let _ = build_session
-            .sender
-            .send(format!("[x44] Build finished with status: {}", status));
-
+        // Clean up in-memory session from RAM
         state_clone
             .build_sessions
             .write()
             .await
             .remove(&deployment_id);
-
-        send_callback(&deployment_id, status).await;
     });
 
     StatusCode::ACCEPTED
