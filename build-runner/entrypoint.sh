@@ -13,7 +13,7 @@ echo "Cloning repository($BRANCH)..."
 
 BASIC_AUTH=$(printf "x-access-token:%s" "$GITHUB_TOKEN" | base64 | tr -d '\r\n')
 
-git init
+git init -b main
 git remote add origin "$REPO_URL"
 
 git -c http.extraheader="Authorization: Basic $BASIC_AUTH" \

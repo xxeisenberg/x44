@@ -1,27 +1,55 @@
-use aws_sdk_s3 as s3;
+use aws_sdk_s3::{self as s3};
 use axum::{
     Json, Router,
     body::Body,
+    extract::{Path, State},
     http::{Request, StatusCode},
     middleware::{self, Next},
-    response::Response,
-    routing::post,
+    response::{
+        Response, Sse,
+        sse::{Event, KeepAlive},
+    },
+    routing::{get, post},
 };
-use std::{io::BufRead, path::Path, process::Command};
+use std::{collections::HashMap, sync::Arc, time::Duration};
+use tokio::{
+    io::{AsyncBufReadExt, BufReader},
+    process::Command,
+    sync::{RwLock, broadcast},
+};
+use tokio_stream::{Stream, StreamExt, wrappers::BroadcastStream};
 use tower_http::trace::TraceLayer;
 use walkdir::WalkDir;
 
 mod models;
+
+#[derive(Clone, Debug)]
+struct BuildSession {
+    sender: tokio::sync::broadcast::Sender<String>,
+    history: Arc<RwLock<Vec<String>>>,
+}
+
+#[derive(Clone, Default)]
+struct BuildState {
+    build_sessions: Arc<RwLock<HashMap<String, BuildSession>>>,
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     dotenvy::dotenv().expect("Failed to load .env file");
     tracing_subscriber::fmt::init();
 
+    let state = BuildState::default();
+
     let app = Router::new()
-        .route("/build-it", post(build_handler))
+        .route(
+            "/build-it",
+            post(build_handler).layer(middleware::from_fn(auth_middleware)),
+        )
+        .route("/logs/{deployment_id}", get(log_handler))
+        .layer(tower_http::cors::CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
-        .layer(middleware::from_fn(auth_middleware));
+        .with_state(state);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await.unwrap();
 
@@ -32,10 +60,58 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     Ok(())
 }
 
-async fn build_handler(Json(payload): Json<models::Payload>) -> StatusCode {
-    tokio::spawn(async move {
-        let deployment_id = payload.deployment_id.clone();
+async fn log_handler(
+    State(state): State<BuildState>,
+    Path(deployment_id): Path<String>,
+) -> Result<Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>>, StatusCode> {
+    let session = {
+        let sessions = state.build_sessions.read().await;
+        sessions.get(&deployment_id).cloned()
+    };
 
+    let Some(session) = session else {
+        return Err(StatusCode::NOT_FOUND);
+    };
+
+    let past_lines = session.history.read().await.clone();
+    let history_stream = tokio_stream::iter(past_lines).map(|line| Ok(Event::default().data(line)));
+
+    let rx = session.sender.subscribe();
+    let live_stream = BroadcastStream::new(rx).filter_map(|res| match res {
+        Ok(line) => Some(Ok(Event::default().data(line))),
+        Err(_) => None,
+    });
+
+    let combined_stream = history_stream.chain(live_stream);
+
+    Ok(Sse::new(combined_stream).keep_alive(
+        KeepAlive::new()
+            .interval(Duration::from_secs(10))
+            .text("ping"),
+    ))
+}
+
+async fn build_handler(
+    State(state): State<BuildState>,
+    Json(payload): Json<models::Payload>,
+) -> StatusCode {
+    let deployment_id = payload.deployment_id.clone();
+
+    let (sender, _) = broadcast::channel::<String>(1000);
+
+    let build_session = BuildSession {
+        sender,
+        history: Arc::new(RwLock::new(Vec::<String>::new())),
+    };
+
+    state
+        .build_sessions
+        .write()
+        .await
+        .insert(deployment_id.clone(), build_session.clone());
+
+    let state_clone = state.clone();
+    tokio::spawn(async move {
         let success = match run_build_process(
             &payload.deployment_id,
             &payload.github_token,
@@ -44,6 +120,7 @@ async fn build_handler(Json(payload): Json<models::Payload>) -> StatusCode {
             &payload.output_dir,
             &payload.root_dir,
             &payload.build_command,
+            build_session.clone(),
         )
         .await
         {
@@ -61,6 +138,34 @@ async fn build_handler(Json(payload): Json<models::Payload>) -> StatusCode {
         };
 
         let status = if success { "success" } else { "failed" };
+
+        let all_logs = build_session.history.read().await.join("\n");
+
+        let s3client = setup_r2_client().await;
+        let log_bytestream = aws_sdk_s3::primitives::ByteStream::from(all_logs.into_bytes());
+        match s3client
+            .put_object()
+            .bucket("x44-deployments")
+            .key(format!("deployments/{}/build.log", deployment_id))
+            .body(log_bytestream)
+            .content_type("text/plain")
+            .send()
+            .await
+        {
+            Ok(_) => println!("Logs uploaded successfully"),
+            Err(e) => eprintln!("Failed to upload logs: {}", e),
+        };
+
+        let _ = build_session
+            .sender
+            .send(format!("[x44] Build finished with status: {}", status));
+
+        state_clone
+            .build_sessions
+            .write()
+            .await
+            .remove(&deployment_id);
+
         send_callback(&deployment_id, status).await;
     });
 
@@ -125,6 +230,7 @@ async fn run_build_process(
     output_dir: &str,
     root_dir: &str,
     build_command: &str,
+    session: BuildSession,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     println!("Starting deployment with ID: {}", deployment_id);
     let output_path = std::env::current_dir()?.join("output");
@@ -151,20 +257,34 @@ async fn run_build_process(
             "custom-builder",
         ])
         .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
         .spawn()
         .expect("Failed to execute docker run command");
 
-    if let Some(stdout) = child.stdout.take() {
-        let reader = std::io::BufReader::new(stdout);
-        for line in reader.lines() {
-            match line {
-                Ok(line) => println!("{}", line),
-                Err(e) => eprintln!("Error reading line: {}", e),
-            }
-        }
-    }
+    let stdout = child.stdout.take().expect("failed to take stdout");
+    let stderr = child.stderr.take().expect("failed to take stderr");
 
-    let status = child.wait().expect("Failed to wait on child process");
+    let session_clone = session.clone();
+    let stdout_reader = tokio::spawn(async move {
+        let mut reader = BufReader::new(stdout).lines();
+
+        while let Ok(Some(line)) = reader.next_line().await {
+            let _ = session_clone.sender.send(line.clone());
+            session_clone.history.write().await.push(line);
+        }
+    });
+
+    let stderr_reader = tokio::spawn(async move {
+        let mut reader = BufReader::new(stderr).lines();
+
+        while let Ok(Some(line)) = reader.next_line().await {
+            let _ = session.sender.send(line.clone());
+            session.history.write().await.push(line);
+        }
+    });
+
+    let status = child.wait().await?;
+    let _ = tokio::join!(stdout_reader, stderr_reader);
     if !status.success() {
         eprintln!("Docker build process failed with status: {}", status);
         return Err(format!("Build process failed {}", status).into());
@@ -216,7 +336,7 @@ async fn upload_dir_to_r2(
     dir: &str,
     deployment_id: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let base_path = Path::new(dir);
+    let base_path = std::path::Path::new(dir);
 
     for entry in WalkDir::new(base_path).into_iter().filter_map(|e| e.ok()) {
         if entry.file_type().is_file() {
