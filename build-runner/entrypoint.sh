@@ -46,8 +46,9 @@ step_end
 step_start "Environment"
 
 echo "Checking execution environment..."
-echo "Node version: $(node -v 2>/dev/null || echo 'not installed')"
-echo "NPM version: $(npm -v 2>/dev/null || echo 'not installed')"
+echo "Node: $(node -v 2>/dev/null || echo 'not installed')"
+echo "Bun:  $(bun -v 2>/dev/null || echo 'not installed')"
+echo "NPM:  $(npm -v 2>/dev/null || echo 'not installed')"
 echo "Root directory: $ROOT_DIR"
 cd "$ROOT_DIR"
 
@@ -57,13 +58,20 @@ step_end
 step_start "Install"
 
 echo "Installing dependencies..."
-if [ -f "package-lock.json" ]; then
+if [ -f "bun.lock" ] || [ -f "bun.lockb" ]; then
+  echo "Detected Bun lockfile. Running 'bun install --frozen-lockfile'..."
+  bun install --frozen-lockfile
+elif [ -f "package-lock.json" ]; then
+  echo "Detected package-lock.json. Running 'npm ci'..."
   npm ci
 elif [ -f "pnpm-lock.yaml" ]; then
+  echo "Detected pnpm-lock.yaml. Running 'pnpm install --frozen-lockfile'..."
   pnpm install --frozen-lockfile
 elif [ -f "yarn.lock" ]; then
+  echo "Detected yarn.lock. Running 'yarn install --frozen-lockfile'..."
   yarn install --frozen-lockfile
 else
+  echo "No lockfile detected. Falling back to 'npm install'..."
   npm install --production=false
 fi
 
