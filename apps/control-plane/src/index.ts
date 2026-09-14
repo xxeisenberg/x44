@@ -108,6 +108,27 @@ app.on(["POST", "GET"], "/api/auth/*", (c) => {
   return auth.handler(c.req.raw);
 });
 
+app.post("/api/deployments/callback", async (c) => {
+  const secret = c.req.header("x44-auth");
+  if (secret !== c.env.BUILD_WORKER_SECRET) {
+    return c.text("Unauthorized", 401);
+  }
+
+  const { deployment_id, status } = await c.req.json<{
+    deployment_id: string;
+    status: "success" | "failed";
+  }>();
+
+  const db = c.get("db");
+
+  await db
+    .update(schema.deployments)
+    .set({ status })
+    .where(eq(schema.deployments.id, deployment_id));
+
+  return c.json({ ok: true });
+});
+
 app.use("/api/*", protect);
 
 app.get("/", (c) => {
@@ -474,14 +495,7 @@ export default {
           },
         });
 
-        if (res.ok) {
-          await db
-            .prepare(
-              `UPDATE "deployments" SET status = 'success', updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-            )
-            .bind(data.deployment_id)
-            .run();
-        } else {
+        if (!res.ok) {
           await db
             .prepare(
               `UPDATE "deployments" SET status = 'failed', updated_at = CURRENT_TIMESTAMP WHERE id = ?`,

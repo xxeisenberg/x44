@@ -32,36 +32,55 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-async fn build_handler(Json(payload): Json<models::Payload>) -> Result<(), StatusCode> {
-    let repo_url = &payload.repo_url;
-    let github_token = &payload.github_token;
-    let deployment_id = &payload.deployment_id;
-    let branch = &payload.branch;
-    let root_dir = &payload.root_dir;
-    let output_dir = &payload.output_dir;
-    let build_command = &payload.build_command;
+async fn build_handler(Json(payload): Json<models::Payload>) -> StatusCode {
+    tokio::spawn(async move {
+        let deployment_id = payload.deployment_id.clone();
+        let build_result = run_build_process(
+            &payload.deployment_id,
+            &payload.github_token,
+            &payload.repo_url,
+            &payload.branch,
+            &payload.output_dir,
+            &payload.root_dir,
+            &payload.build_command,
+        )
+        .await;
 
-    if let Err(e) = run_build_process(
-        &deployment_id,
-        &github_token,
-        &repo_url,
-        &branch,
-        &output_dir,
-        &root_dir,
-        &build_command,
-    )
-    .await
-    {
-        eprintln!("Build process failed: {}", e);
-        return Err(StatusCode::INTERNAL_SERVER_ERROR);
-    }
+        let mut success = false;
+        if let Err(e) = build_result {
+            eprintln!("Build process failed: {}", e);
+        } else if let Err(e) = upload_build_output(&payload.deployment_id).await {
+            eprintln!("Failed to upload build output: {}", e);
+        } else {
+            success = true;
+        }
 
-    if let Err(e) = upload_build_output(&deployment_id).await {
-        eprintln!("Failed to upload build output: {}", e);
-        return Err(StatusCode::INTERNAL_SERVER_ERROR);
-    }
+        let status = if success { "success" } else { "failed" };
+        send_callback(&deployment_id, status).await;
+    });
 
-    Ok(())
+    StatusCode::ACCEPTED
+}
+
+async fn send_callback(deployment_id: &str, status: &str) {
+    let api_url =
+        std::env::var("CONTROL_PLANE_URL").unwrap_or_else(|_| "https://api.x44.diy".to_string());
+    let callback_url = format!("{}/api/deployments/callback", api_url.trim_end_matches('/'));
+    let auth_token = std::env::var("X44_AUTH_TOKEN").unwrap_or_default();
+
+    let client = reqwest::Client::new();
+    let body = serde_json::json!({
+        "deployment_id": deployment_id,
+        "status": status
+    });
+
+    let _ = client
+        .post(&callback_url)
+        .header("Content-Type", "application/json")
+        .header("x44-auth", auth_token)
+        .json(&body)
+        .send()
+        .await;
 }
 
 async fn upload_build_output(deployment_id: &str) -> Result<(), Box<dyn std::error::Error>> {
@@ -165,9 +184,12 @@ async fn auth_middleware(request: Request<Body>, next: Next) -> Result<Response,
 }
 
 async fn setup_r2_client() -> s3::Client {
-    let endpoint = std::env::var("R2_ENDPOINT").unwrap_or_default();
-    let access_key = std::env::var("R2_ACCESS_KEY").unwrap_or_default();
-    let secret_key = std::env::var("R2_SECRET_KEY").unwrap_or_default();
+    let endpoint =
+        std::env::var("R2_ENDPOINT").expect("R2_ENDPOINT environment variable must be set");
+    let access_key =
+        std::env::var("R2_ACCESS_KEY").expect("R2_ACCESS_KEY environment variable must be set");
+    let secret_key =
+        std::env::var("R2_SECRET_KEY").expect("R2_SECRET_KEY environment variable must be set");
 
     let config = aws_config::from_env()
         .endpoint_url(endpoint)
