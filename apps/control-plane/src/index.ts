@@ -469,6 +469,48 @@ app.patch("/api/projects/:id", async (c) => {
   return c.json({ success: true, project: updated });
 });
 
+app.delete("/api/projects/:id", async (c) => {
+  const db = c.get("db");
+  const user = c.get("user");
+  const projectId = c.req.param("id");
+
+  const deps = await db
+    .select({ id: schema.deployments.id })
+    .from(schema.deployments)
+    .where(eq(schema.deployments.project_id, projectId));
+
+  const deleted = await db
+    .delete(schema.projects)
+    .where(
+      and(
+        eq(schema.projects.id, projectId),
+        eq(schema.projects.user_id, user.id),
+      ),
+    )
+    .returning();
+
+  if (!deleted.length) {
+    return c.text("Project not found", 404);
+  }
+
+  const r2 = c.env.BUCKET;
+
+  if (r2 && deps.length > 0) {
+    c.executionCtx.waitUntil(
+      (async () => {
+        for (const dep of deps) {
+          const list = await r2.list({ prefix: `deployments/${dep.id}` });
+          if (list.objects.length > 0) {
+            await r2.delete(list.objects.map((obj) => obj.key));
+          }
+        }
+      })(),
+    );
+  }
+
+  return c.json({ success: true });
+});
+
 app.get(
   "/api/projects/:projectId/deployments/:deploymentId/logs",
   async (c) => {
