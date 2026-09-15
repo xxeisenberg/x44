@@ -38,3 +38,8 @@ export type QueueMessage = {
   output_dir: string;
   build_command: string;
 };
+
+export interface ProjectSettingsProps {
+  project: any;
+  onUpdate?: (updated: Record<string, any>) => void;
+}

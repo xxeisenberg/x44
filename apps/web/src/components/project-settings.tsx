@@ -4,8 +4,9 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, Loader2 } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
+import { ProjectSettingsProps } from "@x44/types";
 
-export function ProjectSettings({ project, onUpdate }: any) {
+export function ProjectSettings({ project, onUpdate }: ProjectSettingsProps) {
   const router = useRouter();
   const baseUrl =
     process.env.NEXT_PUBLIC_CONTROL_PANEL_URL || "https://api.x44.diy";
