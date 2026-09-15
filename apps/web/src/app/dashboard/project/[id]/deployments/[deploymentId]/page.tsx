@@ -79,6 +79,50 @@ export default function DeploymentDetailPage() {
   const [project, setProject] = useState<Project | null>(null);
   const [deployment, setDeployment] = useState<Deployment | null>(null);
   const [loading, setLoading] = useState(true);
+  const [cancelling, setCancelling] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+
+  const handleCancel = async () => {
+    setCancelling(true);
+    try {
+      const baseUrl =
+        process.env.NEXT_PUBLIC_CONTROL_PANEL_URL || "https://api.x44.diy";
+      await authClient.$fetch(
+        `${baseUrl}/api/deployments/${deployment.id}/cancel`,
+        {
+          method: "POST",
+        },
+      );
+      router.refresh();
+    } catch (err) {
+      console.error("Cancel failed:", err);
+    } finally {
+      setCancelling(false);
+    }
+  };
+
+  const handleRetry = async () => {
+    setRetrying(true);
+    const baseUrl =
+      process.env.NEXT_PUBLIC_CONTROL_PANEL_URL || "https://api.x44.diy";
+    try {
+      const res: any = await authClient.$fetch(
+        `${baseUrl}/api/deployments/${deployment.id}/retry`,
+        {
+          method: "POST",
+        },
+      );
+      if (res?.deployment?.id) {
+        router.push(`/deployments/${res.deployment.id}`);
+      } else {
+        router.refresh();
+      }
+    } catch (err) {
+      console.error("Retry failed:", err);
+    } finally {
+      setRetrying(false);
+    }
+  };
 
   const effectiveStatus = useMemo(() => {
     if (forcedStatus) return forcedStatus;
@@ -696,15 +740,11 @@ export default function DeploymentDetailPage() {
             {effectiveStatus === "failed" && (
               <Button
                 type="button"
-                onClick={() => {
-                  // Retry deployment trigger
-                  router.push(
-                    `/dashboard/project/${projectId}/deployments/${deploymentId}?status=building`,
-                  );
-                }}
+                onClick={handleRetry}
+                disabled={retrying}
                 className="border border-rose-700/60 bg-rose-950/30 text-rose-300 hover:bg-rose-900/40 text-xs"
               >
-                Retry deployment
+                {retrying ? "Queuing..." : "Retry Deployment"}
               </Button>
             )}
 
@@ -713,14 +753,11 @@ export default function DeploymentDetailPage() {
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => {
-                  router.push(
-                    `/dashboard/project/${projectId}/deployments/${deploymentId}?status=failed`,
-                  );
-                }}
+                onClick={handleCancel}
+                disabled={cancelling}
                 className="border-neutral-800 text-xs text-neutral-400 hover:text-white"
               >
-                Cancel Deployment
+                {cancelling ? "Cancelling..." : "Cancel Deployment"}
               </Button>
             )}
           </div>
