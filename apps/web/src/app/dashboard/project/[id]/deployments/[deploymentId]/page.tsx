@@ -611,21 +611,54 @@ export default function DeploymentDetailPage() {
                   </span>
                 </div>
               ) : (
-                logs.map((line, idx) => (
-                  <div
-                    key={idx}
-                    className={`leading-relaxed whitespace-pre-wrap break-all ${
-                      line.startsWith("[err]") ||
-                      line.startsWith("[x44 BUILD ERROR]")
-                        ? "text-rose-400"
-                        : line.startsWith("[x44]")
-                          ? "text-cyan-400 font-semibold"
-                          : "text-neutral-300"
-                    }`}
-                  >
-                    {line}
-                  </div>
-                ))
+                logs.map((line, idx) => {
+                  const startMatch = line.match(/\[x44:step:start\]\s*(\w+)/);
+                  if (startMatch) {
+                    return (
+                      <div
+                        key={idx}
+                        className="my-3 flex items-center gap-3 text-[10px] font-semibold tracking-wider uppercase text-neutral-500 select-none"
+                      >
+                        <span className="h-px flex-1 bg-neutral-800" />
+                        <span className="text-neutral-400">
+                          {startMatch[1]}
+                        </span>
+                        <span className="h-px flex-1 bg-neutral-800" />
+                      </div>
+                    );
+                  }
+
+                  if (line.startsWith("[x44:step:end]")) {
+                    return null;
+                  }
+
+                  const isError =
+                    line.startsWith("[err]") ||
+                    line.startsWith("[x44 BUILD ERROR]");
+                  const isPlatform = line.startsWith("[x44]");
+                  const isSuccessCheck = line.startsWith("✓");
+                  const isUploadLine =
+                    line.startsWith("Uploading ") || line.startsWith("Found ");
+
+                  return (
+                    <div
+                      key={idx}
+                      className={`leading-relaxed whitespace-pre-wrap break-all ${
+                        isError
+                          ? "text-rose-400"
+                          : isPlatform
+                            ? "text-cyan-400 font-semibold"
+                            : isSuccessCheck
+                              ? "text-emerald-400 font-medium"
+                              : isUploadLine
+                                ? "text-neutral-400 text-[11px]"
+                                : "text-neutral-300"
+                      }`}
+                    >
+                      {line}
+                    </div>
+                  );
+                })
               )}
             </div>
           </div>

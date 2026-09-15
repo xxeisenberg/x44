@@ -25,6 +25,7 @@
     {
       "binding": "BUCKET",
       "bucket_name": "x44-deployments",
+      "remote": true,
     },
   ],
   "observability": {

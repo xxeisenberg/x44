@@ -145,7 +145,7 @@ async fn build_handler(
                 build_session.record("[x44:step:start] Upload").await;
                 let upload_start = std::time::Instant::now();
 
-                let upload_res = upload_build_output(&payload.deployment_id).await;
+                let upload_res = upload_build_output(&payload.deployment_id, &build_session).await;
                 let upload_dur = upload_start.elapsed().as_secs();
 
                 match upload_res {
@@ -240,20 +240,19 @@ async fn send_callback(deployment_id: &str, status: &str) {
 
 async fn upload_build_output(
     deployment_id: &str,
+    session: &BuildSession,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     println!("Syncing output to R2...");
 
     let r2_client = setup_r2_client().await;
     let bucket_name = "x44-deployments";
 
-    if let Err(e) = upload_dir_to_r2(&r2_client, bucket_name, "./output", deployment_id).await {
-        eprintln!("Error uploading to R2: {}", e);
-    } else {
-        println!(
-            "Deployment {} uploaded successfully to R2 bucket {}",
-            deployment_id, bucket_name
-        );
-    }
+    upload_dir_to_r2(&r2_client, bucket_name, "./output", deployment_id, session).await?;
+
+    println!(
+        "Deployment {} uploaded successfully to R2 bucket {}",
+        deployment_id, bucket_name
+    );
 
     println!("Cleaning up local output directory...");
     if let Err(e) = std::fs::remove_dir_all("./output") {
@@ -262,7 +261,7 @@ async fn upload_build_output(
         println!("Output directory cleaned up successfully.");
     }
 
-    std::fs::create_dir("./output")?;
+    std::fs::create_dir_all("./output")?;
     println!("Deployment process completed for ID: {}", deployment_id);
     Ok(())
 }
@@ -380,47 +379,64 @@ async fn upload_dir_to_r2(
     bucket: &str,
     dir: &str,
     deployment_id: &str,
+    session: &BuildSession,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let base_path = std::path::Path::new(dir);
 
-    for entry in WalkDir::new(base_path).into_iter().filter_map(|e| e.ok()) {
-        if entry.file_type().is_file() {
-            let file_path = entry.path();
-
-            let relative_path = file_path.strip_prefix(base_path)?;
-            let r2_key = format!("deployments/{}/{}", deployment_id, relative_path.display())
-                .replace("\\", "/");
-
-            let content_type = mime_guess::from_path(file_path)
-                .first_or_octet_stream()
-                .to_string();
-
-            println!(
-                "Uploading {}({}) to R2 as {}",
-                file_path.display(),
-                content_type,
-                r2_key
-            );
-
-            let body = s3::primitives::ByteStream::from_path(file_path)
-                .await
-                .unwrap();
-
-            match client
-                .put_object()
-                .bucket(bucket)
-                .key(r2_key)
-                .body(body)
-                .content_type(content_type)
-                .send()
-                .await
-            {
-                Ok(_) => println!("Successfully uploaded {}", file_path.display()),
-                Err(e) => {
-                    return Err(format!("Failed to upload {}: {}", file_path.display(), e).into());
-                }
-            };
-        }
+    if !base_path.exists() {
+        return Err(format!("Output directory {:?} does not exist", base_path).into());
     }
+
+    let files: Vec<_> = WalkDir::new(base_path)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
+        .collect();
+
+    session
+        .record(format!(
+            "Found {} files to upload to edge storage",
+            files.len()
+        ))
+        .await;
+
+    for entry in files {
+        let file_path = entry.path();
+        let relative_path = file_path.strip_prefix(base_path)?;
+        let r2_key =
+            format!("deployments/{}/{}", deployment_id, relative_path.display()).replace('\\', "/");
+
+        let metadata = tokio::fs::metadata(file_path).await?;
+        let size_kb = metadata.len() as f64 / 1024.0;
+
+        let content_type = mime_guess::from_path(file_path)
+            .first_or_octet_stream()
+            .to_string();
+
+        session
+            .record(format!(
+                "Uploading {} ({:.1} KB)...",
+                relative_path.display(),
+                size_kb
+            ))
+            .await;
+
+        let body = s3::primitives::ByteStream::from_path(file_path).await?;
+
+        client
+            .put_object()
+            .bucket(bucket)
+            .key(r2_key)
+            .body(body)
+            .content_type(content_type)
+            .send()
+            .await
+            .map_err(|e| format!("Failed to upload {}: {}", relative_path.display(), e))?;
+    }
+
+    session
+        .record("✓ All deployment assets uploaded successfully")
+        .await;
+
     Ok(())
 }
