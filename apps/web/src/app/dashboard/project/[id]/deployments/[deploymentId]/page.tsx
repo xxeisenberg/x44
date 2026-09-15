@@ -375,7 +375,7 @@ export default function DeploymentDetailPage() {
       {/* Top Header */}
       <div className="flex flex-col justify-between gap-6 sm:flex-row sm:items-start">
         <div className="flex flex-col gap-2">
-          <h1 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">
+          <h1 className="font-serif text-5xl font-bold text-white sm:text-5xl">
             {projectName}
           </h1>
 
