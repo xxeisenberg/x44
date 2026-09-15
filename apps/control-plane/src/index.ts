@@ -358,26 +358,36 @@ app.post("/api/branches", async (c) => {
   if (!token?.accessToken) {
     return c.text("No token found", 401);
   }
-  const res = await fetch(
-    `https://api.github.com/repos/${repo_full_name}/branches`,
-    {
-      headers: {
-        Authorization: `Bearer ${token.accessToken}`,
-        "User-Agent": "X44",
-        Accept: "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2026-03-10",
+
+  const branches: string[] = [];
+  let page = 1;
+  const perPage = 100;
+
+  while (true) {
+    const res = await fetch(
+      `https://api.github.com/repos/${repo_full_name}/branches?per_page=${perPage}&page=${page}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token.accessToken}`,
+          "User-Agent": "x44",
+          Accept: "application/vnd.github+json",
+        },
       },
-    },
-  );
+    );
 
-  if (!res.ok) {
-    const err = await res.text();
-    return c.text(`GitHub API error: ${err}`, res.status as any);
+    if (!res.ok) {
+      const err = await res.text();
+      return c.text(`GitHub API error: ${err}`, res.status as any);
+    }
+
+    const data: Array<{ name: string }> = await res.json();
+    if (!Array.isArray(data) || data.length === 0) break;
+
+    branches.push(...data.map((b) => b.name));
+
+    if (data.length < perPage || page >= 10) break; // Max: 1000 branches
+    page++;
   }
-
-  const data: BranchResponse[] = await res.json();
-
-  const branches = data.map((branch) => branch.name);
 
   return c.json({ branches });
 });
