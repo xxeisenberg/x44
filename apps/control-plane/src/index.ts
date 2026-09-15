@@ -7,7 +7,7 @@ import getAuth from "./auth";
 import { cors } from "hono/cors";
 import { protect } from "./auth-middleware";
 import { User } from "better-auth";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, ne } from "drizzle-orm";
 import {
   BranchResponse,
   CommitInfo,
@@ -370,11 +370,103 @@ app.post("/api/branches", async (c) => {
     },
   );
 
+  if (!res.ok) {
+    const err = await res.text();
+    return c.text(`GitHub API error: ${err}`, res.status as any);
+  }
+
   const data: BranchResponse[] = await res.json();
 
   const branches = data.map((branch) => branch.name);
 
   return c.json({ branches });
+});
+
+app.patch("/api/projects/:id", async (c) => {
+  const db = c.get("db");
+  const user = c.get("user");
+  const projectId = c.req.param("id");
+
+  if (!user?.id) {
+    return c.text("Unauthorized", 401);
+  }
+
+  const existingProject = await db
+    .select()
+    .from(schema.projects)
+    .where(
+      and(
+        eq(schema.projects.id, projectId),
+        eq(schema.projects.user_id, user.id),
+      ),
+    )
+    .then((res) => res[0]);
+
+  if (!existingProject) {
+    return c.text("Project not found", 404);
+  }
+
+  const body = await c.req.json();
+  const updateData: Record<string, any> = {};
+
+  if (body.subdomain !== undefined) {
+    const cleanSubdomain = body.subdomain
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9-]/g, "");
+
+    if (!cleanSubdomain) {
+      return c.text("Invalid subdomain", 400);
+    }
+
+    if (cleanSubdomain !== existingProject.subdomain) {
+      const collision = await db
+        .select({ id: schema.projects.id })
+        .from(schema.projects)
+        .where(
+          and(
+            eq(schema.projects.subdomain, cleanSubdomain),
+            ne(schema.projects.id, projectId),
+          ),
+        )
+        .then((res) => res[0]);
+
+      if (collision) {
+        return c.text("Subdomain is already in use", 409);
+      }
+
+      updateData.subdomain = cleanSubdomain;
+    }
+  }
+
+  if (body.name !== undefined) {
+    updateData.name = body.name.trim();
+  }
+  if (body.branches !== undefined) {
+    updateData.branches = body.branches.trim() || "main";
+  }
+  if (body.build_command !== undefined) {
+    updateData.build_command = body.build_command.trim();
+  }
+  if (body.output_directory !== undefined) {
+    updateData.output_directory = body.output_directory.trim() || "dist";
+  }
+  if (body.root_dir !== undefined) {
+    updateData.root_dir = body.root_dir.trim() || ".";
+  }
+
+  if (Object.keys(updateData).length === 0) {
+    return c.json({ success: true, project: existingProject });
+  }
+
+  const updated = await db
+    .update(schema.projects)
+    .set(updateData)
+    .where(eq(schema.projects.id, projectId))
+    .returning()
+    .then((res) => res[0]);
+
+  return c.json({ success: true, project: updated });
 });
 
 app.get(

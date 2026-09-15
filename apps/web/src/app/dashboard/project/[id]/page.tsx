@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { authClient } from "@/lib/auth-client";
+import { ProjectSettings } from "@/components/project-settings";
 
 type Project = {
   id: string;
@@ -539,73 +540,13 @@ export default function ProjectOverviewPage() {
       )}
 
       {/* Settings Tab */}
-      {activeTab === "settings" && (
-        <div className="mt-8 flex flex-col gap-6">
-          <div className="rounded-xl border border-neutral-850 bg-neutral-950/70 p-6">
-            <h3 className="text-base font-semibold text-white">
-              General Settings
-            </h3>
-            <p className="mt-1 text-xs text-neutral-400">
-              Configuration values configured during project setup.
-            </p>
-
-            <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div className="flex flex-col gap-1.5 rounded-lg border border-neutral-850 bg-neutral-900/40 p-3">
-                <span className="text-[11px] uppercase tracking-wider text-neutral-500">
-                  Project Name
-                </span>
-                <span className="text-xs font-medium text-white">
-                  {project.name}
-                </span>
-              </div>
-
-              <div className="flex flex-col gap-1.5 rounded-lg border border-neutral-850 bg-neutral-900/40 p-3">
-                <span className="text-[11px] uppercase tracking-wider text-neutral-500">
-                  Subdomain
-                </span>
-                <span className="text-xs font-mono text-white">
-                  {project.subdomain}.x44.diy
-                </span>
-              </div>
-
-              <div className="flex flex-col gap-1.5 rounded-lg border border-neutral-850 bg-neutral-900/40 p-3">
-                <span className="text-[11px] uppercase tracking-wider text-neutral-500">
-                  Repository URL
-                </span>
-                <span className="text-xs text-neutral-300">
-                  {project.repo_url}
-                </span>
-              </div>
-
-              <div className="flex flex-col gap-1.5 rounded-lg border border-neutral-850 bg-neutral-900/40 p-3">
-                <span className="text-[11px] uppercase tracking-wider text-neutral-500">
-                  Production Branch
-                </span>
-                <span className="text-xs font-medium text-white">
-                  {project.branches || "main"}
-                </span>
-              </div>
-
-              <div className="flex flex-col gap-1.5 rounded-lg border border-neutral-850 bg-neutral-900/40 p-3">
-                <span className="text-[11px] uppercase tracking-wider text-neutral-500">
-                  Build Command
-                </span>
-                <span className="text-xs font-mono text-neutral-300">
-                  {project.build_command || "npm run build"}
-                </span>
-              </div>
-
-              <div className="flex flex-col gap-1.5 rounded-lg border border-neutral-850 bg-neutral-900/40 p-3">
-                <span className="text-[11px] uppercase tracking-wider text-neutral-500">
-                  Output Directory
-                </span>
-                <span className="text-xs font-mono text-neutral-300">
-                  {project.output_directory || "dist"}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
+      {activeTab === "settings" && project && (
+        <ProjectSettings
+          project={project}
+          onUpdate={(updated) =>
+            setProject((prev) => (prev ? { ...prev, ...updated } : null))
+          }
+        />
       )}
     </div>
   );
