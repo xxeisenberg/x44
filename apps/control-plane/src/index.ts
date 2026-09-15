@@ -542,6 +542,111 @@ app.get(
   },
 );
 
+app.post("/api/deployments/:id/cancel", async (c) => {
+  const db = c.get("db");
+  const user = c.get("user");
+  const deploymentId = c.req.param("id");
+
+  const deployment = await db
+    .select({
+      id: schema.deployments.id,
+      status: schema.deployments.status,
+      userId: schema.projects.user_id,
+    })
+    .from(schema.deployments)
+    .innerJoin(
+      schema.projects,
+      eq(schema.deployments.project_id, schema.projects.id),
+    )
+    .where(eq(schema.deployments.id, deploymentId))
+    .then((res) => res[0]);
+
+  if (!deployment || deployment.userId !== user.id) {
+    return c.text("Deployment not Found", 404);
+  }
+
+  if (deployment.status !== "queued" && deployment.status !== "building") {
+    return c.text("Deployment is not currently active", 400);
+  }
+
+  await db
+    .update(schema.deployments)
+    .set({ status: "cancelled" })
+    .where(eq(schema.deployments.id, deploymentId));
+
+  const workerUrl = c.env.BUILD_WORKER_URL;
+  if (workerUrl) {
+    c.executionCtx.waitUntil(
+      fetch(`${workerUrl}/cancel/${deploymentId}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x44-auth": c.env.BUILD_WORKER_SECRET,
+        },
+      }).catch(() => {}),
+    );
+  }
+
+  return c.json({ success: true, status: "cancelled" });
+});
+
+app.post("/api/deployments/:id/retry", async (c) => {
+  const db = c.get("db");
+  const user = c.get("user");
+  const oldDeploymentId = c.req.param("id");
+
+  const oldDep = await db
+    .select({
+      deployment: schema.deployments,
+      project: schema.projects,
+    })
+    .from(schema.deployments)
+    .innerJoin(
+      schema.projects,
+      eq(schema.deployments.project_id, schema.projects.id),
+    )
+    .where(eq(schema.deployments.id, oldDeploymentId))
+    .then((res) => res[0]);
+
+  if (!oldDep || oldDep.project.user_id !== user.id) {
+    return c.text("Deployment not found", 404);
+  }
+
+  const newDeployment = await db
+    .insert(schema.deployments)
+    .values({
+      project_id: oldDep.project.id,
+      branch: oldDep.deployment.branch,
+      commit_author: oldDep.deployment.commit_author,
+      commit_hash: oldDep.deployment.commit_hash,
+      commit_message: oldDep.deployment.commit_message,
+      status: "queued",
+    })
+    .returning()
+    .then((res) => res[0]);
+
+  const [token] = await db
+    .select({ accessToken: schema.account.accessToken })
+    .from(schema.account)
+    .where(eq(schema.account.userId, user.id));
+
+  if (!token) {
+    return c.text("No token found", 404);
+  }
+
+  await c.env.QUEUE.send({
+    deployment_id: newDeployment.id,
+    repo_url: oldDep.project.repo_url,
+    branch: newDeployment.branch,
+    build_command: oldDep.project.build_command,
+    output_dir: oldDep.project.output_directory,
+    root_dir: oldDep.project.root_dir,
+    github_token: token.accessToken,
+  });
+
+  return c.json({ success: true, deployment: newDeployment });
+});
+
 app.post("/webhook", async (c) => {
   const db = c.get("db");
   // Verify X-Hub-Signature-256

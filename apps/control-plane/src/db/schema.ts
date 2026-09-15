@@ -42,10 +42,10 @@ export const deployments = sqliteTable(
     commit_message: text("commit_message").notNull(),
     commit_author: text("commit_author").notNull(),
     status: text("status", {
-      enum: ["queued", "building", "success", "failed"],
+      enum: ["queued", "building", "success", "failed", "cancelled"],
     })
       .default("queued")
-      .notNull(), // TODO: Add cancelled status and its functionality
+      .notNull(),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
       .notNull(),

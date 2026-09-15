@@ -55,6 +55,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             post(build_handler).layer(middleware::from_fn(auth_middleware)),
         )
         .route("/logs/{deployment_id}", get(log_handler))
+        .route("/cancel/{deployment_id}", post(cancel_handler))
         .layer(tower_http::cors::CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
         .with_state(state);
@@ -66,6 +67,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     axum::serve(listener, app).await.unwrap();
 
     Ok(())
+}
+
+async fn cancel_handler(Path(deployment_id): Path<String>) -> StatusCode {
+    let container_name = format!("x44-{}", deployment_id);
+    println!("Received cancel request for: {}", container_name);
+
+    let status = tokio::process::Command::new("docker")
+        .args(["rm", "-f", &container_name])
+        .status()
+        .await;
+
+    match status {
+        Ok(s) if s.success() => StatusCode::OK,
+        _ => StatusCode::NOT_FOUND,
+    }
 }
 
 async fn log_handler(
@@ -283,10 +299,14 @@ async fn run_build_process(
     let _ = std::fs::remove_dir_all(&output_path);
     std::fs::create_dir_all(&output_path)?;
 
+    let container_name = format!("x44-{}", deployment_id);
+
     let mut child = Command::new("docker")
         .args([
             "run",
             "--rm",
+            "--name",
+            &container_name,
             "--memory=1g",
             "--cpus=1.0",
             "-e",
