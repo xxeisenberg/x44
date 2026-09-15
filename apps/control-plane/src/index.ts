@@ -157,7 +157,20 @@ app.post("/api/projects", async (c) => {
     .replace(/[^a-z0-9-]/g, "-")
     .replace(/^-+|-+$/g, "");
 
-  const repoUrl = `https://github.com/${body.username}/${body.repoName}`;
+  const repoUrl =
+    `https://github.com/${body.username}/${body.repoName}`.toLowerCase();
+
+  let finalSubdomain = safeSubdomain;
+  const existing = await db
+    .select({ id: schema.projects.id })
+    .from(schema.projects)
+    .where(eq(schema.projects.subdomain, finalSubdomain))
+    .then((res) => res[0]);
+
+  if (existing) {
+    const suffix = crypto.randomUUID().slice(0, 4);
+    finalSubdomain = `${safeSubdomain}-${suffix}`;
+  }
 
   // Insert the project in the DB
   const [proj] = await db
@@ -170,7 +183,7 @@ app.post("/api/projects", async (c) => {
       build_command: body.buildCommand || "npm run build",
       branches: body.branch,
       repo_url: repoUrl,
-      subdomain: safeSubdomain, // TODO: Make it not conflict with others and also make it pretty
+      subdomain: finalSubdomain,
     })
     .returning({ id: schema.projects.id });
 
@@ -186,13 +199,13 @@ app.post("/api/projects", async (c) => {
 
   // Register the Webhook for the repo
   const workerBase = c.env.WORKER_URL.replace(/\/$/, "");
-  const response = await fetch(
+  await fetch(
     `https://api.github.com/repos/${body.username}/${body.repoName}/hooks`,
     {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token.accessToken}`,
-        "User-Agent": "X44",
+        "User-Agent": "x44",
         Accept: "application/vnd.github+json",
         "X-GitHub-Api-Version": "2026-03-10",
       },
@@ -209,8 +222,6 @@ app.post("/api/projects", async (c) => {
     },
   );
 
-  console.log(JSON.stringify(response));
-
   // Creating the first deployment
 
   const commit_info = await fetch(
@@ -218,7 +229,7 @@ app.post("/api/projects", async (c) => {
     {
       headers: {
         Authorization: `Bearer ${token.accessToken}`,
-        "User-Agent": "X44",
+        "User-Agent": "x44",
         Accept: "application/vnd.github+json",
         "X-GitHub-Api-Version": "2026-03-10",
       },
@@ -682,10 +693,9 @@ app.post("/webhook", async (c) => {
     return c.text("Ignored branch deletion or empty commit.", 200);
   }
 
-  console.log("Received push event:", body);
-  const repo_url = (
-    body.repository.html_url || body.repository.clone_url
-  ).replace(/\.git$/, "");
+  const repo_url = (body.repository.html_url || body.repository.clone_url)
+    .replace(/\.git$/, "")
+    .toLowerCase();
   const branch = body.ref.replace(/^refs\/heads\//, "");
 
   const [project] = await db
