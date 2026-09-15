@@ -278,6 +278,9 @@ async fn run_build_process(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     println!("Starting deployment with ID: {}", deployment_id);
     let output_path = std::env::current_dir()?.join("output");
+
+    // CLean output folder before building
+    let _ = std::fs::remove_dir_all(&output_path);
     std::fs::create_dir_all(&output_path)?;
 
     let mut child = Command::new("docker")
@@ -295,9 +298,11 @@ async fn run_build_process(
             "-e",
             &format!("ROOT_DIR={}", root_dir),
             "-e",
+            &format!("OUTPUT_DIR={}", output_dir),
+            "-e",
             &format!("GITHUB_TOKEN={}", github_token),
             "-v",
-            &format!("{}:/workspace/{}", output_path.display(), output_dir),
+            &format!("{}:/output", output_path.display()),
             "custom-builder",
         ])
         .stdout(std::process::Stdio::piped())

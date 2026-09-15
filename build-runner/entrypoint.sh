@@ -49,16 +49,17 @@ echo "Checking execution environment..."
 echo "Node: $(node -v 2>/dev/null || echo 'not installed')"
 echo "Bun:  $(bun -v 2>/dev/null || echo 'not installed')"
 echo "NPM:  $(npm -v 2>/dev/null || echo 'not installed')"
-echo "Root directory: $ROOT_DIR"
-cd "$ROOT_DIR"
+echo "Root directory: ${ROOT_DIR:-.}"
+cd "${ROOT_DIR:-.}"
 
 step_end
 
 # --- Step 3: Install ---
 step_start "Install"
 
-echo "Installing dependencies..."
-if [ -f "bun.lock" ] || [ -f "bun.lockb" ]; then
+if [ ! -f "package.json" ]; then
+  echo "No package.json found. Skipping dependency installation."
+elif [ -f "bun.lock" ] || [ -f "bun.lockb" ]; then
   echo "Detected Bun lockfile. Running 'bun install --frozen-lockfile'..."
   bun install --frozen-lockfile
 elif [ -f "package-lock.json" ]; then
@@ -71,7 +72,7 @@ elif [ -f "yarn.lock" ]; then
   echo "Detected yarn.lock. Running 'yarn install --frozen-lockfile'..."
   yarn install --frozen-lockfile
 else
-  echo "No lockfile detected. Falling back to 'npm install'..."
+  echo "No lockfile detected. Running 'npm install'..."
   npm install --production=false
 fi
 
@@ -80,15 +81,36 @@ step_end
 # --- Step 4: Build ---
 step_start "Build"
 
-echo "Running build command..."
-BUILD_COMMAND=${BUILD_COMMAND:-"npm run build"}
-eval "$BUILD_COMMAND"
+# Skip build if there is no package.json and BUILD_COMMAND was left as default "npm run build"
+if [ ! -f "package.json" ] && [ "$BUILD_COMMAND" = "npm run build" ]; then
+  echo "Static site detected without package.json. Skipping build command."
+elif [ -n "$BUILD_COMMAND" ] && [ "$BUILD_COMMAND" != "none" ] && [ "$BUILD_COMMAND" != "null" ]; then
+  echo "Executing: $BUILD_COMMAND"
+  eval "$BUILD_COMMAND"
+else
+  echo "No build command specified. Skipping build step."
+fi
 
-OUTPUT_DIR=${OUTPUT_DIR:-"dist"}
+# Fallback: if output_dir is "dist" but doesn't exist, and index.html is in root, use root
+OUTPUT_DIR=${OUTPUT_DIR:-"."}
+if [ "$OUTPUT_DIR" != "." ] && [ ! -d "$OUTPUT_DIR" ] && [ -f "index.html" ]; then
+  echo "Notice: Output directory '$OUTPUT_DIR' not found, but 'index.html' exists in root. Using root directory."
+  OUTPUT_DIR="."
+fi
 
-if [ ! -d "$OUTPUT_DIR" ]; then
+mkdir -p /output
+
+if [ "$OUTPUT_DIR" = "." ] || [ "$OUTPUT_DIR" = "./" ] || [ -z "$OUTPUT_DIR" ]; then
+  echo "Copying root files to output..."
+  cp -r . /output/
+  rm -rf /output/.git /output/node_modules
+else
+  if [ ! -d "$OUTPUT_DIR" ]; then
     echo "Error: Build output directory '$OUTPUT_DIR' not found after build."
     exit 1
+  fi
+  echo "Copying '$OUTPUT_DIR' to output..."
+  cp -r "$OUTPUT_DIR"/. /output/
 fi
 
 step_end
