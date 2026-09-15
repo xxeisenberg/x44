@@ -83,16 +83,17 @@ export default function DeploymentDetailPage() {
   const [retrying, setRetrying] = useState(false);
 
   const handleCancel = async () => {
+    const targetId =
+      deployment?.id || (deploymentId !== "latest" ? deploymentId : null);
+    if (!targetId) return;
+
     setCancelling(true);
     try {
       const baseUrl =
         process.env.NEXT_PUBLIC_CONTROL_PANEL_URL || "https://api.x44.diy";
-      await authClient.$fetch(
-        `${baseUrl}/api/deployments/${deployment.id}/cancel`,
-        {
-          method: "POST",
-        },
-      );
+      await authClient.$fetch(`${baseUrl}/api/deployments/${targetId}/cancel`, {
+        method: "POST",
+      });
       router.refresh();
     } catch (err) {
       console.error("Cancel failed:", err);
@@ -102,12 +103,16 @@ export default function DeploymentDetailPage() {
   };
 
   const handleRetry = async () => {
+    const targetId =
+      deployment?.id || (deploymentId !== "latest" ? deploymentId : null);
+    if (!targetId) return;
+
     setRetrying(true);
     const baseUrl =
       process.env.NEXT_PUBLIC_CONTROL_PANEL_URL || "https://api.x44.diy";
     try {
       const res: any = await authClient.$fetch(
-        `${baseUrl}/api/deployments/${deployment.id}/retry`,
+        `${baseUrl}/api/deployments/${targetId}/retry`,
         {
           method: "POST",
         },
