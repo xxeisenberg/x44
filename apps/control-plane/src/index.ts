@@ -125,7 +125,12 @@ app.post("/api/deployments/callback", async (c) => {
   await db
     .update(schema.deployments)
     .set({ status })
-    .where(eq(schema.deployments.id, deployment_id));
+    .where(
+      and(
+        eq(schema.deployments.id, deployment_id),
+        ne(schema.deployments.status, "cancelled"),
+      ),
+    );
 
   return c.json({ ok: true });
 });
