@@ -761,9 +761,9 @@ export default {
 
       await db
         .prepare(
-          `UPDATE "deployments" SET status = 'building', updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+          `UPDATE "deployments" SET status = 'building', updated_at = ? WHERE id = ?`,
         )
-        .bind(data.deployment_id)
+        .bind(Date.now(), data.deployment_id)
         .run();
 
       try {
@@ -779,18 +779,18 @@ export default {
         if (!res.ok) {
           await db
             .prepare(
-              `UPDATE "deployments" SET status = 'failed', updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+              `UPDATE "deployments" SET status = 'failed', updated_at = ? WHERE id = ?`,
             )
-            .bind(data.deployment_id)
+            .bind(Date.now(), data.deployment_id)
             .run();
         }
       } catch (err) {
         console.error("Failed to connect to build daemon:", err);
         await db
           .prepare(
-            `UPDATE "deployments" SET status = 'failed', updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+            `UPDATE "deployments" SET status = 'failed', updated_at = ? WHERE id = ?`,
           )
-          .bind(data.deployment_id)
+          .bind(Date.now(), data.deployment_id)
           .run();
       } finally {
         message.ack();
