@@ -54,6 +54,11 @@ function cleanRepoUrl(url?: string) {
   return url.replace(/^https?:\/\//, "").replace(/\.git$/, "");
 }
 
+function getCommitTitle(message?: string) {
+  if (!message) return "No commit message";
+  return message.split("\n")[0].trim();
+}
+
 const DEPLOYMENT_STEPS = [
   "Repository",
   "Environment",
@@ -94,6 +99,7 @@ export default function DeploymentDetailPage() {
       await authClient.$fetch(`${baseUrl}/api/deployments/${targetId}/cancel`, {
         method: "POST",
       });
+      setDeployment((prev) => (prev ? { ...prev, status: "cancelled" } : null));
       router.refresh();
     } catch (err) {
       console.error("Cancel failed:", err);
@@ -117,9 +123,10 @@ export default function DeploymentDetailPage() {
           method: "POST",
         },
       );
-      if (res?.data?.deployment?.id) {
+      const newDep = res?.data?.deployment || res?.deployment;
+      if (newDep?.id) {
         router.push(
-          `/dashboard/project/${res.data.deployment.project_id}/deployments/${res.data.deployment.id}`,
+          `/dashboard/project/${newDep.project_id || projectId}/deployments/${newDep.id}`,
         );
       } else {
         router.refresh();
@@ -156,7 +163,7 @@ export default function DeploymentDetailPage() {
     activeDeploymentId && projectId
       ? `${controlPlaneUrl}/api/projects/${projectId}/deployments/${activeDeploymentId}/logs`
       : undefined;
-  const { logs, isStreaming } = useBuildLogs({
+  const { logs } = useBuildLogs({
     deploymentId: activeDeploymentId,
     workerUrl:
       process.env.NEXT_PUBLIC_BUILD_WORKER_URL || "https://build.x44.diy",
@@ -178,13 +185,11 @@ export default function DeploymentDetailPage() {
     };
 
     for (const line of logs) {
-      // Matches: [x44:step:start] Install
       const startMatch = line.match(/\[x44:step:start\]\s*(\w+)/);
       if (startMatch && metrics[startMatch[1]]) {
         metrics[startMatch[1]].status = "running";
       }
 
-      // Matches: [x44:step:end] Install (__s)
       const endMatch = line.match(/\[x44:step:end\]\s*(\w+)\s*\(([^)]+)\)/);
       if (endMatch && metrics[endMatch[1]]) {
         metrics[endMatch[1]].status = "done";
@@ -216,14 +221,12 @@ export default function DeploymentDetailPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
 
-  // Auto-scroll when new logs arrive
   useEffect(() => {
     if (autoScroll && scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [logs, autoScroll]);
 
-  // Pause auto-scroll if the user scrolls up to read something
   const handleScroll = () => {
     if (!scrollRef.current) return;
     const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
@@ -239,7 +242,6 @@ export default function DeploymentDetailPage() {
         const baseUrl =
           process.env.NEXT_PUBLIC_CONTROL_PANEL_URL || "http://localhost:8787";
 
-        // 1. Load project directly
         let currentProject: Project | null = null;
         try {
           const res = await authClient.$fetch(
@@ -256,7 +258,6 @@ export default function DeploymentDetailPage() {
             if (isMounted) setProject(found);
           }
         } catch {
-          // Fallback if projectId is subdomain
           try {
             const res = await authClient.$fetch(`${baseUrl}/api/projects`);
             const data = res?.data as { projects: Project[] } | null;
@@ -279,7 +280,6 @@ export default function DeploymentDetailPage() {
 
         const targetProjectId = currentProject?.id || projectId;
 
-        // 2. Load deployment
         if (deploymentId && deploymentId !== "latest") {
           try {
             const depRes = await authClient.$fetch(
@@ -296,7 +296,6 @@ export default function DeploymentDetailPage() {
               setDeployment(foundDep);
             }
           } catch {
-            // Fallback: search in project deployments list if deploymentId was a short commit hash
             try {
               const depRes = await authClient.$fetch(
                 `${baseUrl}/api/projects/${targetProjectId}/deployments`,
@@ -319,7 +318,6 @@ export default function DeploymentDetailPage() {
             }
           }
         } else {
-          // Fetch latest deployment from project's deployment list
           try {
             const depRes = await authClient.$fetch(
               `${baseUrl}/api/projects/${targetProjectId}/deployments`,
@@ -350,7 +348,6 @@ export default function DeploymentDetailPage() {
     };
   }, [projectId, deploymentId]);
 
-  // Live polling when deployment is queued or building
   useEffect(() => {
     if (
       !deployment ||
@@ -433,8 +430,8 @@ export default function DeploymentDetailPage() {
     <div className="mx-auto flex w-full max-w-5xl flex-col px-4 py-10 sm:px-6 lg:px-8">
       {/* Top Header */}
       <div className="flex flex-col justify-between gap-6 sm:flex-row sm:items-start">
-        <div className="flex flex-col gap-2">
-          <h1 className="font-serif text-5xl font-bold text-white sm:text-5xl">
+        <div className="flex flex-col gap-2 overflow-hidden">
+          <h1 className="font-serif text-5xl font-bold text-white sm:text-5xl truncate">
             {projectName}
           </h1>
 
@@ -459,14 +456,17 @@ export default function DeploymentDetailPage() {
               {commitHash.slice(0, 7)}
             </span>
             <span className="text-neutral-600">·</span>
-            <span className="text-neutral-400">
-              &ldquo;{commitMessage}&rdquo;
+            <span
+              className="text-neutral-400 truncate max-w-[200px] sm:max-w-xs md:max-w-sm inline-block align-bottom"
+              title={commitMessage}
+            >
+              &ldquo;{getCommitTitle(commitMessage)}&rdquo;
             </span>
           </div>
         </div>
 
         {/* Status Badge in Header */}
-        <div className="flex flex-col items-start sm:items-end gap-1">
+        <div className="flex flex-col items-start sm:items-end gap-1 shrink-0">
           {effectiveStatus === "success" && (
             <div className="flex flex-col items-start sm:items-end">
               <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-950/40 px-3 py-1 text-xs font-semibold tracking-wider text-emerald-400">
@@ -605,7 +605,6 @@ export default function DeploymentDetailPage() {
                   className="flex items-center justify-between text-xs"
                 >
                   <div className="flex items-center gap-3">
-                    {/* Status Icon */}
                     {isDone && (
                       <div className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/40">
                         <CheckCircle2 className="h-3.5 w-3.5" />
@@ -627,7 +626,6 @@ export default function DeploymentDetailPage() {
                       </div>
                     )}
 
-                    {/* Step Label */}
                     <span
                       className={`font-medium ${
                         isDone
@@ -643,7 +641,6 @@ export default function DeploymentDetailPage() {
                     </span>
                   </div>
 
-                  {/* Phase Duration / Indicator */}
                   <span className="font-mono text-[11px] text-neutral-500">
                     {metric.duration ? (
                       <span className="text-neutral-400">
@@ -681,7 +678,6 @@ export default function DeploymentDetailPage() {
               )}
             </div>
 
-            {/* Terminal Body with Live Streaming */}
             <div
               ref={scrollRef}
               onScroll={handleScroll}
@@ -750,26 +746,29 @@ export default function DeploymentDetailPage() {
             </div>
           </div>
 
-          {/* Commit Card for Success */}
-          {effectiveStatus === "success" && (
-            <div className="rounded-xl border border-neutral-850 bg-neutral-950/70 p-5">
-              <span className="text-xs font-semibold uppercase tracking-wider text-neutral-400">
-                Commit
+          {/* Commit Card */}
+          <div className="rounded-xl border border-neutral-850 bg-neutral-950/70 p-5 overflow-hidden">
+            <span className="text-xs font-semibold uppercase tracking-wider text-neutral-400">
+              Commit
+            </span>
+            <div className="mt-3 flex flex-col gap-1 text-xs">
+              <span className="font-mono font-medium text-white">
+                {commitHash.slice(0, 7)}
               </span>
-              <div className="mt-3 flex flex-col gap-1 text-xs">
-                <span className="font-mono font-medium text-white">
-                  {commitHash.slice(0, 7)}
-                </span>
-                <span className="text-neutral-300">{commitMessage}</span>
-                <span className="text-[11px] text-neutral-500">
-                  by {deployment?.commit_author || "Commit Author"} ·{" "}
-                  {formatRelativeTime(
-                    deployment?.updatedAt || deployment?.createdAt,
-                  )}
-                </span>
-              </div>
+              <span
+                className="text-neutral-300 line-clamp-2 break-words"
+                title={commitMessage}
+              >
+                {commitMessage}
+              </span>
+              <span className="text-[11px] text-neutral-500">
+                by {deployment?.commit_author || "Commit Author"} ·{" "}
+                {formatRelativeTime(
+                  deployment?.updatedAt || deployment?.createdAt,
+                )}
+              </span>
             </div>
-          )}
+          </div>
 
           {/* Action buttons */}
           <div className="flex items-center justify-between">

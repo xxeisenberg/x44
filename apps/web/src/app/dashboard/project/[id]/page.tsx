@@ -30,7 +30,7 @@ type DeploymentItem = {
   commit_hash: string;
   commit_message: string;
   commit_author: string;
-  status: "queued" | "building" | "success" | "failed";
+  status: "queued" | "building" | "success" | "failed" | "cancelled";
   createdAt: number | string | Date;
   updatedAt: number | string | Date;
 };
@@ -56,6 +56,11 @@ function formatRelativeTime(dateInput?: number | string | Date) {
 function cleanRepoUrl(url?: string) {
   if (!url) return "";
   return url.replace(/^https?:\/\//, "").replace(/\.git$/, "");
+}
+
+function getCommitTitle(message?: string) {
+  if (!message) return "No commit message";
+  return message.split("\n")[0].trim();
 }
 
 export default function ProjectOverviewPage() {
@@ -162,6 +167,9 @@ export default function ProjectOverviewPage() {
   }
 
   const latestDeployment = deployments.length > 0 ? deployments[0] : null;
+  const productionDeployment =
+    deployments.find((d) => d.status === "success") || null;
+  const isLive = Boolean(productionDeployment);
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col px-4 py-10 sm:px-6 lg:px-8">
@@ -200,18 +208,43 @@ export default function ProjectOverviewPage() {
             {latestDeployment?.commit_message && (
               <>
                 <span className="text-neutral-600">·</span>
-                <span className="text-neutral-400">
-                  &ldquo;{latestDeployment.commit_message}&rdquo;
+                <span
+                  className="text-neutral-400 truncate max-w-[200px] sm:max-w-[300px]"
+                  title={latestDeployment.commit_message}
+                >
+                  &ldquo;{getCommitTitle(latestDeployment.commit_message)}
+                  &rdquo;
                 </span>
               </>
             )}
           </div>
 
           <div className="mt-2 flex items-center">
-            <span className="inline-flex items-center gap-2 text-xs font-semibold tracking-wider text-emerald-400">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.9)]" />
-              READY
-            </span>
+            {latestDeployment?.status === "success" && (
+              <span className="inline-flex items-center gap-2 text-xs font-semibold tracking-wider text-emerald-400">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.9)]" />
+                READY
+              </span>
+            )}
+            {latestDeployment?.status === "failed" && (
+              <span className="inline-flex items-center gap-2 text-xs font-semibold tracking-wider text-rose-400">
+                <span className="h-1.5 w-1.5 rounded-full bg-rose-400" />
+                FAILED
+              </span>
+            )}
+            {latestDeployment?.status === "cancelled" && (
+              <span className="inline-flex items-center gap-2 text-xs font-semibold tracking-wider text-neutral-400">
+                <span className="h-1.5 w-1.5 rounded-full bg-neutral-400" />
+                CANCELLED
+              </span>
+            )}
+            {(latestDeployment?.status === "building" ||
+              latestDeployment?.status === "queued") && (
+              <span className="inline-flex items-center gap-2 text-xs font-semibold tracking-wider text-amber-400">
+                <RotateCw className="h-3.5 w-3.5 animate-spin" />
+                BUILDING
+              </span>
+            )}
           </div>
         </div>
 
@@ -221,17 +254,27 @@ export default function ProjectOverviewPage() {
             <span className="text-[11px] font-medium uppercase tracking-wider text-neutral-500">
               Production URL
             </span>
-            <div className="mt-1">
-              <a
-                href={`https://${productionUrl}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 text-sm font-medium text-white hover:text-neutral-300 transition-colors"
-              >
-                <span>{productionUrl}</span>
-                <ExternalLink className="h-3.5 w-3.5 text-neutral-400" />
-              </a>
-            </div>
+            {isLive ? (
+              <div className="mt-1">
+                <a
+                  href={`https://${productionUrl}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-sm font-medium text-white hover:text-neutral-300 transition-colors"
+                >
+                  <span className="truncate max-w-[200px]">
+                    {productionUrl}
+                  </span>
+                  <ExternalLink className="h-3.5 w-3.5 shrink-0 text-neutral-400" />
+                </a>
+              </div>
+            ) : (
+              <div className="mt-1">
+                <span className="text-sm font-medium text-neutral-500">
+                  Not deployed yet
+                </span>
+              </div>
+            )}
           </div>
 
           <div className="mt-4 flex items-center justify-between pt-3 border-t border-neutral-850 text-xs">
@@ -240,7 +283,12 @@ export default function ProjectOverviewPage() {
                 Last deployed
               </span>
               <span className="text-neutral-300 font-medium">
-                {formatRelativeTime(project.updatedAt || project.createdAt)}
+                {isLive
+                  ? formatRelativeTime(
+                      productionDeployment.updatedAt ||
+                        productionDeployment.createdAt,
+                    )
+                  : "—"}
               </span>
             </div>
 
@@ -308,15 +356,31 @@ export default function ProjectOverviewPage() {
                 href={`/dashboard/project/${project.id}/deployments/${latestDeployment.id}`}
                 className="group flex flex-col justify-between gap-4 rounded-xl border border-neutral-850 bg-neutral-950/70 p-5 transition-all hover:border-neutral-700 hover:bg-neutral-900/40 cursor-pointer sm:flex-row sm:items-center"
               >
-                <div className="flex flex-col gap-1">
+                <div className="flex flex-col gap-1 overflow-hidden">
                   <div className="flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
-                    <span className="font-mono text-xs font-semibold text-white">
+                    {latestDeployment.status === "success" && (
+                      <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
+                    )}
+                    {latestDeployment.status === "failed" && (
+                      <span className="h-2 w-2 shrink-0 rounded-full bg-rose-400" />
+                    )}
+                    {latestDeployment.status === "cancelled" && (
+                      <span className="h-2 w-2 shrink-0 rounded-full bg-neutral-400" />
+                    )}
+                    {(latestDeployment.status === "building" ||
+                      latestDeployment.status === "queued") && (
+                      <span className="h-2 w-2 shrink-0 rounded-full bg-amber-400 animate-pulse" />
+                    )}
+
+                    <span className="font-mono text-xs font-semibold text-white shrink-0">
                       {latestDeployment.commit_hash.slice(0, 7)}
                     </span>
-                    <span className="text-neutral-500">·</span>
-                    <span className="text-xs text-neutral-300">
-                      {latestDeployment.commit_message}
+                    <span className="text-neutral-500 shrink-0">·</span>
+                    <span
+                      className="text-xs text-neutral-300 truncate max-w-[150px] sm:max-w-[250px]"
+                      title={latestDeployment.commit_message}
+                    >
+                      {getCommitTitle(latestDeployment.commit_message)}
                     </span>
                   </div>
                   <div className="text-[11px] text-neutral-500">
@@ -327,42 +391,41 @@ export default function ProjectOverviewPage() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-4">
-                  <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-400">
-                    READY
-                  </span>
+                <div className="flex items-center gap-4 shrink-0">
+                  {latestDeployment.status === "success" && (
+                    <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-400">
+                      READY
+                    </span>
+                  )}
+                  {latestDeployment.status === "failed" && (
+                    <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-rose-400">
+                      FAILED
+                    </span>
+                  )}
+                  {latestDeployment.status === "cancelled" && (
+                    <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-neutral-400">
+                      CANCELLED
+                    </span>
+                  )}
+                  {(latestDeployment.status === "building" ||
+                    latestDeployment.status === "queued") && (
+                    <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-400">
+                      <RotateCw className="h-3.5 w-3.5 animate-spin" />
+                      BUILDING
+                    </span>
+                  )}
                   <ArrowRight className="h-4 w-4 text-neutral-500 transition-transform group-hover:translate-x-1 group-hover:text-white" />
                 </div>
               </Link>
             ) : (
-              <Link
-                href={`/dashboard/project/${project.id}/deployments/latest`}
-                className="group flex flex-col justify-between gap-4 rounded-xl border border-neutral-850 bg-neutral-950/70 p-5 transition-all hover:border-neutral-700 hover:bg-neutral-900/40 cursor-pointer sm:flex-row sm:items-center"
-              >
-                <div className="flex flex-col gap-1">
-                  <div className="flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
-                    <span className="font-mono text-xs font-semibold text-white">
-                      {project.subdomain.slice(0, 7)}
-                    </span>
-                    <span className="text-neutral-500">·</span>
-                    <span className="text-xs text-neutral-300">
-                      Initial production build
-                    </span>
-                  </div>
-                  <div className="text-[11px] text-neutral-500">
-                    {project.branches || "main"} ·{" "}
-                    {formatRelativeTime(project.updatedAt || project.createdAt)}
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-4">
-                  <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-400">
-                    READY
-                  </span>
-                  <ArrowRight className="h-4 w-4 text-neutral-500 transition-transform group-hover:translate-x-1 group-hover:text-white" />
-                </div>
-              </Link>
+              <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-neutral-850 bg-neutral-950/70 p-8 text-center">
+                <span className="text-sm font-medium text-neutral-300">
+                  No deployments yet
+                </span>
+                <span className="text-xs text-neutral-500">
+                  Push to your repository to trigger a build.
+                </span>
+              </div>
             )}
           </div>
 
@@ -382,11 +445,13 @@ export default function ProjectOverviewPage() {
               </button>
             </div>
 
-            <div className="flex flex-col divide-y divide-neutral-850 rounded-xl border border-neutral-850 bg-neutral-950/70">
+            <div className="flex flex-col divide-y divide-neutral-850 rounded-xl border border-neutral-850 bg-neutral-950/70 overflow-hidden">
               {deployments.length > 0 ? (
                 deployments.slice(0, 5).map((dep) => {
                   const isSuccess = dep.status === "success";
                   const isFailed = dep.status === "failed";
+                  const isCancelled = dep.status === "cancelled";
+
                   return (
                     <Link
                       key={dep.id}
@@ -394,7 +459,7 @@ export default function ProjectOverviewPage() {
                       className="flex items-center justify-between p-3.5 text-xs transition-colors hover:bg-neutral-900/40 cursor-pointer"
                     >
                       <div className="flex items-center gap-2.5">
-                        <span className="font-mono text-neutral-300">
+                        <span className="font-mono text-neutral-300 shrink-0">
                           {dep.commit_hash.slice(0, 7)}
                         </span>
                         {isSuccess && (
@@ -408,37 +473,29 @@ export default function ProjectOverviewPage() {
                             ✕ failed
                           </span>
                         )}
-                        {!isSuccess && !isFailed && (
+                        {isCancelled && (
+                          <span className="inline-flex items-center gap-1 text-[11px] text-neutral-400">
+                            <span className="h-1.5 w-1.5 rounded-full bg-neutral-500" />
+                            cancelled
+                          </span>
+                        )}
+                        {!isSuccess && !isFailed && !isCancelled && (
                           <span className="inline-flex items-center gap-1 text-[11px] text-amber-400">
                             <RotateCw className="h-2.5 w-2.5 animate-spin" />
                             building
                           </span>
                         )}
                       </div>
-                      <span className="text-[11px] text-neutral-500">
+                      <span className="text-[11px] text-neutral-500 shrink-0">
                         {formatRelativeTime(dep.updatedAt || dep.createdAt)}
                       </span>
                     </Link>
                   );
                 })
               ) : (
-                <Link
-                  href={`/dashboard/project/${project.id}/deployments/latest`}
-                  className="flex items-center justify-between p-3.5 text-xs transition-colors hover:bg-neutral-900/40 cursor-pointer"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <span className="font-mono text-neutral-300">
-                      {project.subdomain.slice(0, 7)}
-                    </span>
-                    <span className="inline-flex items-center gap-1 text-[11px] text-emerald-400">
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                      success
-                    </span>
-                  </div>
-                  <span className="text-[11px] text-neutral-500">
-                    {formatRelativeTime(project.updatedAt || project.createdAt)}
-                  </span>
-                </Link>
+                <div className="p-5 text-center text-xs text-neutral-500">
+                  No history available.
+                </div>
               )}
             </div>
           </div>
@@ -454,25 +511,30 @@ export default function ProjectOverviewPage() {
             </span>
           </div>
 
-          <div className="flex flex-col divide-y divide-neutral-850 rounded-xl border border-neutral-850 bg-neutral-950/70">
+          <div className="flex flex-col divide-y divide-neutral-850 rounded-xl border border-neutral-850 bg-neutral-950/70 overflow-hidden">
             {deployments.length > 0 ? (
               deployments.map((dep) => {
                 const isSuccess = dep.status === "success";
                 const isFailed = dep.status === "failed";
+                const isCancelled = dep.status === "cancelled";
+
                 return (
                   <Link
                     key={dep.id}
                     href={`/dashboard/project/${project.id}/deployments/${dep.id}`}
                     className="flex flex-col justify-between gap-3 p-4 text-xs transition-colors hover:bg-neutral-900/40 cursor-pointer sm:flex-row sm:items-center"
                   >
-                    <div className="flex flex-col gap-1">
+                    <div className="flex flex-col gap-1 overflow-hidden">
                       <div className="flex items-center gap-2">
-                        <span className="font-mono font-medium text-white">
+                        <span className="font-mono font-medium text-white shrink-0">
                           {dep.commit_hash.slice(0, 7)}
                         </span>
-                        <span className="text-neutral-500">·</span>
-                        <span className="text-neutral-300">
-                          {dep.commit_message}
+                        <span className="text-neutral-500 shrink-0">·</span>
+                        <span
+                          className="text-neutral-300 truncate max-w-[200px] sm:max-w-[400px]"
+                          title={dep.commit_message}
+                        >
+                          {getCommitTitle(dep.commit_message)}
                         </span>
                       </div>
                       <div className="text-[11px] text-neutral-500">
@@ -482,7 +544,7 @@ export default function ProjectOverviewPage() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-4 shrink-0">
                       {isSuccess && (
                         <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-400">
                           <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
@@ -494,7 +556,13 @@ export default function ProjectOverviewPage() {
                           ✕ FAILED
                         </span>
                       )}
-                      {!isSuccess && !isFailed && (
+                      {isCancelled && (
+                        <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-neutral-400">
+                          <span className="h-1.5 w-1.5 rounded-full bg-neutral-500" />
+                          CANCELLED
+                        </span>
+                      )}
+                      {!isSuccess && !isFailed && !isCancelled && (
                         <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-400">
                           <RotateCw className="h-3 w-3 animate-spin" />
                           BUILDING
@@ -506,34 +574,9 @@ export default function ProjectOverviewPage() {
                 );
               })
             ) : (
-              <Link
-                href={`/dashboard/project/${project.id}/deployments/latest`}
-                className="flex flex-col justify-between gap-3 p-4 text-xs transition-colors hover:bg-neutral-900/40 cursor-pointer sm:flex-row sm:items-center"
-              >
-                <div className="flex flex-col gap-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono font-medium text-white">
-                      {project.subdomain.slice(0, 7)}
-                    </span>
-                    <span className="text-neutral-500">·</span>
-                    <span className="text-neutral-300">
-                      Initial production build
-                    </span>
-                  </div>
-                  <div className="text-[11px] text-neutral-500">
-                    {project.branches || "main"} ·{" "}
-                    {formatRelativeTime(project.updatedAt || project.createdAt)}
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-4">
-                  <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-400">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                    SUCCESS
-                  </span>
-                  <ArrowRight className="h-4 w-4 text-neutral-500" />
-                </div>
-              </Link>
+              <div className="p-8 text-center text-sm text-neutral-500">
+                No deployments found for this project.
+              </div>
             )}
           </div>
         </div>
