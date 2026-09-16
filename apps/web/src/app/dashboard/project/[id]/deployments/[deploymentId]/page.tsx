@@ -117,8 +117,10 @@ export default function DeploymentDetailPage() {
           method: "POST",
         },
       );
-      if (res?.deployment?.id) {
-        router.push(`/deployments/${res.deployment.id}`);
+      if (res?.data?.deployment?.id) {
+        router.push(
+          `/dashboard/project/${res.data.deployment.project_id}/deployments/${res.data.deployment.id}`,
+        );
       } else {
         router.refresh();
       }
