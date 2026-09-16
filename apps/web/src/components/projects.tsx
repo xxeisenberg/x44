@@ -155,22 +155,22 @@ export function Projects() {
               <Link
                 key={project.id}
                 href={`/dashboard/project/${project.id}`}
-                className="group relative flex flex-col justify-between gap-4 rounded-xl border border-neutral-850 bg-neutral-950/70 p-5 transition-all duration-200 hover:border-neutral-700 hover:bg-neutral-900/40 sm:flex-row sm:items-center cursor-pointer"
+                className="group relative flex flex-col gap-4 rounded-xl border border-neutral-850 bg-neutral-950/70 p-5 transition-all duration-200 hover:border-neutral-700 hover:bg-neutral-900/40 sm:grid sm:grid-cols-[1fr_140px_1fr] sm:items-center cursor-pointer"
               >
                 {/* Left info */}
                 <div className="flex flex-col gap-1.5">
                   <div className="flex items-center gap-3">
-                    <span className="text-base font-semibold text-white group-hover:text-neutral-100">
+                    <span className="text-base font-semibold text-white group-hover:text-neutral-100 truncate">
                       {project.name}
                     </span>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-neutral-400">
-                    <span className="text-neutral-400">
+                    <span className="text-neutral-400 truncate max-w-[200px]">
                       {cleanRepoUrl(project.repo_url)}
                     </span>
                     <span className="text-neutral-600">·</span>
-                    <span className="inline-flex items-center gap-1 text-neutral-400">
+                    <span className="inline-flex items-center gap-1 text-neutral-400 shrink-0">
                       <GitBranch className="h-3 w-3 text-neutral-500" />
                       {project.branches || "main"}
                     </span>
@@ -213,8 +213,8 @@ export function Projects() {
 
                 {/* Right info */}
                 <div className="flex items-center justify-between gap-6 sm:justify-end">
-                  <div className="flex flex-col items-start text-xs sm:items-end">
-                    <span className="font-mono text-neutral-300">
+                  <div className="flex flex-col items-start text-xs sm:items-end min-w-0">
+                    <span className="font-mono text-neutral-300 truncate max-w-[180px]">
                       {project.subdomain
                         ? `${project.subdomain}.x44.diy`
                         : `${project.name}.x44.diy`}
@@ -227,7 +227,7 @@ export function Projects() {
                     </span>
                   </div>
 
-                  <ArrowRight className="h-4 w-4 text-neutral-500 transition-transform duration-200 group-hover:translate-x-1 group-hover:text-white" />
+                  <ArrowRight className="h-4 w-4 shrink-0 text-neutral-500 transition-transform duration-200 group-hover:translate-x-1 group-hover:text-white" />
                 </div>
               </Link>
             );
