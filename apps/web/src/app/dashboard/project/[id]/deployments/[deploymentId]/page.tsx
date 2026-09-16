@@ -37,7 +37,7 @@ type Deployment = {
   commit_hash: string;
   commit_message: string;
   commit_author: string;
-  status: "queued" | "building" | "success" | "failed";
+  status: "queued" | "building" | "success" | "failed" | "cancelled";
   createdAt: number | string | Date;
   updatedAt: number | string | Date;
 };
@@ -135,17 +135,18 @@ export default function DeploymentDetailPage() {
     if (forcedStatus) return forcedStatus;
     if (deployment?.status) return deployment.status;
     if (deploymentId === "failed") return "failed";
-    if (
-      deploymentId === "building" ||
-      deploymentId === "in-progress" ||
-      deploymentId === "queued"
-    )
+    if (deploymentId === "cancelled") return "cancelled";
+    if (deploymentId === "building" || deploymentId === "queued") {
       return "building";
+    }
     return "success";
   }, [forcedStatus, deployment, deploymentId]);
 
   const isBuilding =
     effectiveStatus === "building" || effectiveStatus === "queued";
+
+  const canRetry =
+    effectiveStatus === "failed" || effectiveStatus === "cancelled";
 
   const activeDeploymentId =
     deployment?.id || (deploymentId !== "latest" ? deploymentId : "");
@@ -197,7 +198,10 @@ export default function DeploymentDetailPage() {
           metrics[step].status = "done";
         }
       });
-    } else if (effectiveStatus === "failed") {
+    } else if (
+      effectiveStatus === "failed" ||
+      effectiveStatus === "cancelled"
+    ) {
       const runningStep = DEPLOYMENT_STEPS.find(
         (s) => metrics[s].status === "running",
       );
@@ -373,7 +377,11 @@ export default function DeploymentDetailPage() {
 
         if (latest) {
           setDeployment(latest);
-          if (latest.status === "success" || latest.status === "failed") {
+          if (
+            latest.status === "success" ||
+            latest.status === "failed" ||
+            latest.status === "cancelled"
+          ) {
             clearInterval(interval);
           }
         }
@@ -485,6 +493,18 @@ export default function DeploymentDetailPage() {
             </div>
           )}
 
+          {effectiveStatus === "cancelled" && (
+            <div className="flex flex-col items-start sm:items-end">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-neutral-700 bg-neutral-900 px-3 py-1 text-xs font-semibold tracking-wider text-neutral-400">
+                <XCircle className="h-3.5 w-3.5" />
+                CANCELLED
+              </span>
+              <span className="mt-1 text-[11px] text-neutral-500">
+                Deployment stopped by user.
+              </span>
+            </div>
+          )}
+
           {effectiveStatus === "failed" && (
             <div className="flex flex-col items-start sm:items-end">
               <span className="inline-flex items-center gap-1.5 rounded-full border border-rose-500/30 bg-rose-950/40 px-3 py-1 text-xs font-semibold tracking-wider text-rose-400">
@@ -543,6 +563,22 @@ export default function DeploymentDetailPage() {
             </h3>
             <p className="mt-1 text-xs text-neutral-400">
               The build process exited with a non-zero code.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {effectiveStatus === "cancelled" && (
+        <div className="mt-8 flex items-start gap-4 rounded-xl border border-neutral-850 bg-neutral-950/60 p-5">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-neutral-800 bg-neutral-900 text-neutral-400">
+            <XCircle className="h-5 w-5" />
+          </div>
+          <div className="flex flex-col">
+            <h3 className="text-sm font-semibold text-neutral-200">
+              Deployment was cancelled.
+            </h3>
+            <p className="mt-1 text-xs text-neutral-500">
+              The build worker was instructed to abort container execution.
             </p>
           </div>
         </div>
@@ -744,14 +780,22 @@ export default function DeploymentDetailPage() {
               ← View Deployments
             </Link>
 
-            {effectiveStatus === "failed" && (
+            {canRetry && (
               <Button
                 type="button"
                 onClick={handleRetry}
                 disabled={retrying}
-                className="border border-rose-700/60 bg-rose-950/30 text-rose-300 hover:bg-rose-900/40 text-xs"
+                className={`text-xs ${
+                  effectiveStatus === "failed"
+                    ? "border border-rose-700/60 bg-rose-950/30 text-rose-300 hover:bg-rose-900/40"
+                    : "border border-neutral-700 bg-neutral-900 text-neutral-200 hover:bg-neutral-800"
+                }`}
               >
-                {retrying ? "Queuing..." : "Retry Deployment"}
+                {retrying
+                  ? "Queuing..."
+                  : effectiveStatus === "cancelled"
+                    ? "Redeploy"
+                    : "Retry Deployment"}
               </Button>
             )}
 
