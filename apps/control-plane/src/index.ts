@@ -8,13 +8,7 @@ import { cors } from "hono/cors";
 import { protect } from "./auth-middleware";
 import { User } from "better-auth";
 import { and, desc, eq, ne } from "drizzle-orm";
-import {
-  BranchResponse,
-  CommitInfo,
-  ProjectBody,
-  QueueMessage,
-  Repo,
-} from "@x44/types";
+import { CommitInfo, ProjectBody, QueueMessage, Repo } from "@x44/types";
 
 type Bindings = {
   QUEUE: Queue;

@@ -13,6 +13,7 @@ const RESERVED_SUBDOMAINS = new Set([
   "auth",
   "admin",
   "www",
+  "build",
 ]);
 
 app.get("*", async (c) => {

@@ -10,19 +10,12 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
-import {
-  IconCreditCard,
-  IconLogout,
-  IconNotification,
-  IconPlus,
-  IconUserCircle,
-} from "@tabler/icons-react";
+import { IconLogout, IconPlus } from "@tabler/icons-react";
 import { usePathname, useRouter } from "next/navigation";
 
 type User = {

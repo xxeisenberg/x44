@@ -49,7 +49,7 @@ export default function Home() {
 
   async function handleLogin() {
     setLoginLoading(true);
-    const data = await authClient.signIn.social({
+    await authClient.signIn.social({
       provider: "github",
       callbackURL: process.env.NEXT_PUBLIC_SITE_URL,
       scopes: ["repo"],
