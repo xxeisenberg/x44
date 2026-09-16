@@ -151,6 +151,7 @@ async fn build_handler(
             &payload.output_dir,
             &payload.root_dir,
             &payload.build_command,
+            payload.env_vars,
             build_session.clone(),
         )
         .await;
@@ -290,6 +291,7 @@ async fn run_build_process(
     output_dir: &str,
     root_dir: &str,
     build_command: &str,
+    env_vars: HashMap<String, String>,
     session: BuildSession,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     println!("Starting deployment with ID: {}", deployment_id);
@@ -301,14 +303,20 @@ async fn run_build_process(
 
     let container_name = format!("x44-{}", deployment_id);
 
+    let env_json = serde_json::to_string(&env_vars).unwrap_or_else(|_| "{}".to_string());
+
     let mut child = Command::new("docker")
         .args([
             "run",
             "--rm",
             "--name",
             &container_name,
-            "--memory=1g",
-            "--cpus=1.0",
+            "--memory=1500m",
+            "--cpus=2.0",
+            "-e",
+            "NODE_OPTIONS=--max-old-space-size=1200",
+            "-e",
+            &format!("BUILD_ENV_JSON={}", env_json),
             "-e",
             &format!("REPO_URL={}", repo_url),
             "-e",

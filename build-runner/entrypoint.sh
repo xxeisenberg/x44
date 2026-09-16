@@ -48,11 +48,23 @@ step_start "Environment"
 echo "Checking execution environment..."
 echo "Node: $(node -v 2>/dev/null || echo 'not installed')"
 echo "Bun:  $(bun -v 2>/dev/null || echo 'not installed')"
+echo "Yarn: $(yarn -v 2>/dev/null || echo 'not installed')"
+echo "PNPM: $(pnpm -v 2>/dev/null || echo 'not installed')"
 echo "NPM:  $(npm -v 2>/dev/null || echo 'not installed')"
 echo "Root directory: ${ROOT_DIR:-.}"
 cd "${ROOT_DIR:-.}"
 
 step_end
+
+if [ -n "$BUILD_ENV_JSON" ] && [ "$BUILD_ENV_JSON" != "{}" ]; then
+  echo "[x44] Injecting build environment variables..."
+  eval "$(node -e '
+    const envs = JSON.parse(process.env.BUILD_ENV_JSON || "{}");
+    for (const [k, v] of Object.entries(envs)) {
+      console.log(`export ${k}=${JSON.stringify(v)};`);
+    }
+  ')"
+fi
 
 # --- Step 3: Install ---
 step_start "Install"

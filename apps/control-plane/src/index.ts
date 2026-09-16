@@ -33,6 +33,23 @@ type Variables = {
   // session: Session
 };
 
+async function getProjectEnvMap(
+  db: any,
+  projectId: string,
+): Promise<Record<string, string>> {
+  const records = await db
+    .select({
+      key: schema.projectEnvVars.key,
+      value: schema.projectEnvVars.value,
+    })
+    .from(schema.projectEnvVars)
+    .where(eq(schema.projectEnvVars.project_id, projectId));
+
+  return Object.fromEntries(
+    records.map((r: { key: string; value: string }) => [r.key, r.value]),
+  );
+}
+
 async function getUserRepos(token: string): Promise<Repo[]> {
   const repos: Repo[] = [];
   let page = 1;
@@ -255,6 +272,8 @@ app.post("/api/projects", async (c) => {
     })
     .returning({ id: schema.deployments.id });
 
+  const env_vars = await getProjectEnvMap(db, proj.id);
+
   // Sending the build job to the queue
   await c.env.QUEUE.send({
     repo_url: repoUrl,
@@ -264,6 +283,7 @@ app.post("/api/projects", async (c) => {
     root_dir: body.rootDirectory || "./",
     output_dir: body.outputDirectory || "dist",
     build_command: body.buildCommand || "npm run build",
+    env_vars,
   });
 
   return c.json({ project_id: proj.id, deployment_id: dep.id });
@@ -375,7 +395,7 @@ app.post("/api/branches", async (c) => {
     return c.text("No token found", 401);
   }
 
-  const branches: string[] = [];
+  const branches: BranchResponse[] = [];
   let page = 1;
   const perPage = 100;
 
@@ -399,7 +419,7 @@ app.post("/api/branches", async (c) => {
     const data: Array<{ name: string }> = await res.json();
     if (!Array.isArray(data) || data.length === 0) break;
 
-    branches.push(...data.map((b) => b.name));
+    branches.push(...data.map((b) => ({ name: b.name })));
 
     if (data.length < perPage || page >= 10) break; // Max: 1000 branches
     page++;
@@ -537,6 +557,102 @@ app.delete("/api/projects/:id", async (c) => {
   return c.json({ success: true });
 });
 
+app.get("/api/projects/:id/env", async (c) => {
+  const db = c.get("db");
+  const user = c.get("user");
+  const projectId = c.req.param("id");
+
+  const envs = await db
+    .select({
+      id: schema.projectEnvVars.id,
+      key: schema.projectEnvVars.key,
+      value: schema.projectEnvVars.value,
+      updatedAt: schema.projectEnvVars.updatedAt,
+    })
+    .from(schema.projectEnvVars)
+    .innerJoin(
+      schema.projects,
+      eq(schema.projectEnvVars.project_id, schema.projects.id),
+    )
+    .where(
+      and(
+        eq(schema.projectEnvVars.project_id, projectId),
+        eq(schema.projects.user_id, user.id),
+      ),
+    );
+
+  return c.json({ envs });
+});
+
+app.post("/api/projects/:id/env", async (c) => {
+  const db = c.get("db");
+  const user = c.get("user");
+  const projectId = c.req.param("id");
+
+  const { key, value } = await c.req.json();
+
+  const isOwner = await db
+    .select({ id: schema.projects.id })
+    .from(schema.projects)
+    .where(
+      and(
+        eq(schema.projects.id, projectId),
+        eq(schema.projects.user_id, user.id),
+      ),
+    )
+    .then((res) => res[0]);
+
+  if (!isOwner) return c.text("Project not found", 404);
+
+  const cleanKey = key.trim().replace(/[^a-zA-Z0-9_]/g, "_");
+  if (!cleanKey) return c.text("Invalid key", 400);
+
+  await db
+    .insert(schema.projectEnvVars)
+    .values({
+      project_id: projectId,
+      key: cleanKey,
+      value: String(value ?? ""),
+    })
+    .onConflictDoUpdate({
+      target: [schema.projectEnvVars.project_id, schema.projectEnvVars.key],
+      set: { value: String(value ?? "") },
+    });
+
+  return c.json({ success: true });
+});
+
+app.delete("/api/projects/:id/env/:envId", async (c) => {
+  const db = c.get("db");
+  const user = c.get("user");
+  const projectId = c.req.param("id");
+  const envId = c.req.param("envId");
+
+  const isOwner = await db
+    .select({ id: schema.projects.id })
+    .from(schema.projects)
+    .where(
+      and(
+        eq(schema.projects.id, projectId),
+        eq(schema.projects.user_id, user.id),
+      ),
+    )
+    .then((res) => res[0]);
+
+  if (!isOwner) return c.text("Unauthorized", 401);
+
+  await db
+    .delete(schema.projectEnvVars)
+    .where(
+      and(
+        eq(schema.projectEnvVars.id, envId),
+        eq(schema.projectEnvVars.project_id, projectId),
+      ),
+    );
+
+  return c.json({ success: true });
+});
+
 app.get(
   "/api/projects/:projectId/deployments/:deploymentId/logs",
   async (c) => {
@@ -650,6 +766,8 @@ app.post("/api/deployments/:id/retry", async (c) => {
     return c.text("No token found", 404);
   }
 
+  const env_vars = await getProjectEnvMap(db, oldDep.project.id);
+
   await c.env.QUEUE.send({
     deployment_id: newDeployment.id,
     repo_url: oldDep.project.repo_url,
@@ -658,6 +776,7 @@ app.post("/api/deployments/:id/retry", async (c) => {
     output_dir: oldDep.project.output_directory,
     root_dir: oldDep.project.root_dir,
     github_token: token.accessToken,
+    env_vars,
   });
 
   return c.json({ success: true, deployment: newDeployment });
@@ -744,6 +863,8 @@ app.post("/webhook", async (c) => {
     return c.text("Project owner OAuth token not found", 500);
   }
 
+  const env_vars = await getProjectEnvMap(db, project.id);
+
   await c.env.QUEUE.send({
     repo_url,
     github_token: token.accessToken,
@@ -752,6 +873,7 @@ app.post("/webhook", async (c) => {
     root_dir: project.root_dir || "./",
     output_dir: project.output_dir || "dist",
     build_command: project.build_command || "npm run build",
+    env_vars,
   });
 
   return c.json({ status: "success" });
