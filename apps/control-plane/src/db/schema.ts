@@ -1,5 +1,11 @@
 import { relations, sql } from "drizzle-orm";
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import {
+  index,
+  integer,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from "drizzle-orm/sqlite-core";
 
 export const projects = sqliteTable(
   "projects",
@@ -69,7 +75,7 @@ export const projectEnvVars = sqliteTable(
     project_id: text("project_id")
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
-    key: text("key").notNull().unique(),
+    key: text("key").notNull(),
     value: text("value").notNull(),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
@@ -80,8 +86,7 @@ export const projectEnvVars = sqliteTable(
       .notNull(),
   },
   (table) => [
-    index("project_env_vars_project_id_idx").on(table.project_id),
-    index("project_env_vars_key_idx").on(table.key),
+    uniqueIndex("project_env_project_key_idx").on(table.project_id, table.key),
   ],
 );
 
@@ -172,6 +177,17 @@ export const verification = sqliteTable(
   },
   (table) => [index("verification_identifier_idx").on(table.identifier)],
 );
+
+export const projectRelations = relations(projects, ({ many }) => ({
+  deployments: many(deployments),
+}));
+
+export const deployementRelations = relations(deployments, ({ one }) => ({
+  project: one(projects, {
+    fields: [deployments.project_id],
+    references: [projects.id],
+  }),
+}));
 
 export const userRelations = relations(user, ({ many }) => ({
   sessions: many(session),

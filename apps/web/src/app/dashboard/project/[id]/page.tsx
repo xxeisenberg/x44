@@ -283,7 +283,7 @@ export default function ProjectOverviewPage() {
                 Last deployed
               </span>
               <span className="text-neutral-300 font-medium">
-                {isLive
+                {productionDeployment
                   ? formatRelativeTime(
                       productionDeployment.updatedAt ||
                         productionDeployment.createdAt,
