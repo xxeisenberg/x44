@@ -28,7 +28,7 @@ type Bindings = {
 };
 
 type Variables = {
-  db: ReturnType<typeof drizzle>;
+  db: ReturnType<typeof drizzle<typeof schema>>;
   user: User;
   // session: Session
 };
@@ -162,10 +162,24 @@ app.get("/", (c) => {
 app.get("/api/projects", async (c) => {
   const db = c.get("db");
   const user = c.get("user");
-  const projects = await db
-    .select()
-    .from(schema.projects)
-    .where(eq(schema.projects.user_id, user.id));
+
+  const rows = await db.query.projects.findMany({
+    where: (projects, { eq }) => eq(projects.user_id, user.id),
+    with: {
+      deployments: {
+        columns: { status: true },
+        orderBy: (deployments, { desc }) => [desc(deployments.createdAt)],
+        limit: 1,
+      },
+    },
+  });
+
+  const projects = rows.map((p) => ({
+    ...p,
+    status: p.deployments[0]?.status ?? null,
+    deployments: undefined,
+  }));
+
   return c.json({ projects });
 });
 
@@ -391,11 +405,12 @@ app.post("/api/branches", async (c) => {
     .from(schema.account)
     .where(eq(schema.account.userId, user.id))
     .then((res) => res[0]);
+
   if (!token?.accessToken) {
     return c.text("No token found", 401);
   }
 
-  const branches: BranchResponse[] = [];
+  const branches: string[] = [];
   let page = 1;
   const perPage = 100;
 
@@ -419,7 +434,7 @@ app.post("/api/branches", async (c) => {
     const data: Array<{ name: string }> = await res.json();
     if (!Array.isArray(data) || data.length === 0) break;
 
-    branches.push(...data.map((b) => ({ name: b.name })));
+    branches.push(...data.map((b) => b.name));
 
     if (data.length < perPage || page >= 10) break; // Max: 1000 branches
     page++;

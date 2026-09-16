@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, GitBranch, Plus, Search } from "lucide-react";
+import { ArrowRight, GitBranch, Plus, RotateCw, Search } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -22,7 +22,7 @@ export type ProjectItem = {
   branches: string;
   createdAt: number | string | Date;
   updatedAt: number | string | Date;
-  status?: "ready" | "building" | "failed" | "queued" | "success";
+  status?: "queued" | "building" | "success" | "failed" | "cancelled" | null;
 };
 
 function formatRelativeTime(dateInput?: number | string | Date) {
@@ -145,11 +145,11 @@ export function Projects() {
           </div>
         ) : (
           filteredProjects.map((project) => {
-            const rawStatus = project.status || "ready";
-            const isBuilding =
-              rawStatus === "building" || rawStatus === "queued";
-            const isFailed = rawStatus === "failed";
-            const isReady = !isBuilding && !isFailed;
+            const status = project.status;
+            const isSuccess = status === "success";
+            const isBuilding = status === "building" || status === "queued";
+            const isFailed = status === "failed";
+            const isCancelled = status === "cancelled";
 
             return (
               <Link
@@ -179,7 +179,7 @@ export function Projects() {
 
                 {/* Center / Status */}
                 <div className="flex items-center sm:justify-center">
-                  {isReady && (
+                  {isSuccess && (
                     <span className="inline-flex items-center gap-2 text-xs font-semibold tracking-wider text-emerald-400">
                       <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.9)]" />
                       READY
@@ -187,7 +187,7 @@ export function Projects() {
                   )}
                   {isBuilding && (
                     <span className="inline-flex items-center gap-2 text-xs font-semibold tracking-wider text-amber-400">
-                      <span className="h-2 w-2 rounded-full border-2 border-amber-400 border-t-transparent animate-spin" />
+                      <RotateCw className="h-3 w-3 animate-spin" />
                       BUILDING
                     </span>
                   )}
@@ -195,6 +195,18 @@ export function Projects() {
                     <span className="inline-flex items-center gap-2 text-xs font-semibold tracking-wider text-rose-400">
                       <span className="font-bold">✕</span>
                       FAILED
+                    </span>
+                  )}
+                  {isCancelled && (
+                    <span className="inline-flex items-center gap-2 text-xs font-semibold tracking-wider text-neutral-400">
+                      <span className="h-1.5 w-1.5 rounded-full bg-neutral-500" />
+                      CANCELLED
+                    </span>
+                  )}
+                  {!status && (
+                    <span className="inline-flex items-center gap-2 text-xs font-medium tracking-wider text-neutral-500">
+                      <span className="h-1.5 w-1.5 rounded-full bg-neutral-600" />
+                      NOT DEPLOYED
                     </span>
                   )}
                 </div>
