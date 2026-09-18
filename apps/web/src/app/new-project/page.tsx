@@ -13,6 +13,7 @@ import {
 import {
   Field,
   FieldContent,
+  FieldError,
   FieldGroup,
   FieldLabel,
   FieldSet,
@@ -53,6 +54,9 @@ export default function Page() {
       outputDirectory: "dist",
     },
     onSubmit: async ({ value }) => {
+      if (!value.name?.trim()) {
+        return;
+      }
       try {
         setSubmitting(true);
         const username = repos
@@ -233,20 +237,47 @@ export default function Page() {
                     {/* Project Name Field */}
                     <form.Field
                       name="name"
-                      children={(field) => (
-                        <Field>
-                          <FieldLabel htmlFor={field.name}>
-                            Project name
-                          </FieldLabel>
-                          <Input
-                            id={field.name}
-                            name={field.name}
-                            value={field.state.value}
-                            onBlur={field.handleBlur}
-                            onChange={(e) => field.handleChange(e.target.value)}
-                          />
-                        </Field>
-                      )}
+                      validators={{
+                        onChange: ({ value }) =>
+                          !value?.trim()
+                            ? "Project name is required"
+                            : undefined,
+                        onBlur: ({ value }) =>
+                          !value?.trim()
+                            ? "Project name is required"
+                            : undefined,
+                      }}
+                      children={(field) => {
+                        const isInvalid =
+                          field.state.meta.isTouched &&
+                          field.state.meta.errors.length > 0;
+                        return (
+                          <Field data-invalid={isInvalid}>
+                            <FieldLabel htmlFor={field.name}>
+                              Project name{" "}
+                              <span className="text-destructive">*</span>
+                            </FieldLabel>
+                            <Input
+                              id={field.name}
+                              name={field.name}
+                              value={field.state.value}
+                              onBlur={field.handleBlur}
+                              onChange={(e) =>
+                                field.handleChange(e.target.value)
+                              }
+                              required
+                              aria-invalid={isInvalid}
+                            />
+                            {isInvalid && (
+                              <FieldError>
+                                {typeof field.state.meta.errors[0] === "string"
+                                  ? field.state.meta.errors[0]
+                                  : "Project name is required"}
+                              </FieldError>
+                            )}
+                          </Field>
+                        );
+                      }}
                     />
 
                     {/* Build Command Field */}
