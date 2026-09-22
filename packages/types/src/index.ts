@@ -43,3 +43,30 @@ export interface ProjectSettingsProps {
   project: any;
   onUpdate?: (updated: Record<string, any>) => void;
 }
+
+export type Project = {
+  id: string;
+  user_id: string;
+  name: string;
+  repo_url: string;
+  build_command: string;
+  root_dir: string;
+  output_directory: string;
+  subdomain: string;
+  branches: string;
+  current_deployment_id: string;
+  createdAt: number | string | Date;
+  updatedAt: number | string | Date;
+};
+
+export type Deployment = {
+  id: string;
+  project_id: string;
+  branch: string;
+  commit_hash: string;
+  commit_message: string;
+  commit_author: string;
+  status: "queued" | "building" | "success" | "failed" | "cancelled";
+  createdAt: number | string | Date;
+  updatedAt: number | string | Date;
+};

@@ -133,7 +133,7 @@ app.post("/api/deployments/callback", async (c) => {
 
   const db = c.get("db");
 
-  await db
+  const [record] = await db
     .update(schema.deployments)
     .set({ status })
     .where(
@@ -141,7 +141,15 @@ app.post("/api/deployments/callback", async (c) => {
         eq(schema.deployments.id, deployment_id),
         ne(schema.deployments.status, "cancelled"),
       ),
-    );
+    )
+    .returning({ project_id: schema.deployments.project_id });
+
+  if (status === "success") {
+    await db
+      .update(schema.projects)
+      .set({ current_deployment_id: deployment_id })
+      .where(eq(schema.projects.id, record.project_id));
+  }
 
   return c.json({ ok: true });
 });
@@ -562,6 +570,48 @@ app.delete("/api/projects/:id", async (c) => {
       })(),
     );
   }
+
+  return c.json({ success: true });
+});
+
+app.post("/api/projects/:id/rollback", async (c) => {
+  const db = c.get("db");
+  const user = c.get("user");
+
+  const projectId = c.req.param("id");
+  const { deployment_id } = await c.req.json();
+
+  const project = await db
+    .select()
+    .from(schema.projects)
+    .where(
+      and(
+        eq(schema.projects.id, projectId),
+        eq(schema.projects.user_id, user.id),
+      ),
+    )
+    .then((res) => res[0]);
+
+  if (!project) return c.text("project not found", 404);
+
+  const targetDeployment = await db
+    .select()
+    .from(schema.deployments)
+    .where(
+      and(
+        eq(schema.deployments.id, deployment_id),
+        eq(schema.deployments.project_id, projectId),
+        eq(schema.deployments.status, "success"),
+      ),
+    )
+    .then((res) => res[0]);
+
+  if (!targetDeployment) return c.text("Invalid deployment for rollback", 400);
+
+  await db
+    .update(schema.projects)
+    .set({ current_deployment_id: deployment_id })
+    .where(eq(schema.projects.id, projectId));
 
   return c.json({ success: true });
 });

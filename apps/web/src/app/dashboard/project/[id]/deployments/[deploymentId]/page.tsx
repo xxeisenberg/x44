@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   ExternalLink,
   GitBranch,
+  RotateCcw,
   RotateCw,
   XCircle,
 } from "lucide-react";
@@ -15,32 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { authClient } from "@/lib/auth-client";
 import { useBuildLogs } from "@/hooks/use-build-logs";
-
-type Project = {
-  id: string;
-  user_id: string;
-  name: string;
-  repo_url: string;
-  build_command: string;
-  root_dir: string;
-  output_directory: string;
-  subdomain: string;
-  branches: string;
-  createdAt: number | string | Date;
-  updatedAt: number | string | Date;
-};
-
-type Deployment = {
-  id: string;
-  project_id: string;
-  branch: string;
-  commit_hash: string;
-  commit_message: string;
-  commit_author: string;
-  status: "queued" | "building" | "success" | "failed" | "cancelled";
-  createdAt: number | string | Date;
-  updatedAt: number | string | Date;
-};
+import { Deployment, Project } from "@x44/types";
 
 function formatRelativeTime(dateInput?: number | string | Date) {
   if (!dateInput) return "Recently";
@@ -86,6 +62,7 @@ export default function DeploymentDetailPage() {
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  const [rollingBack, setRollingBack] = useState(false);
 
   const handleCancel = async () => {
     const targetId =
@@ -138,6 +115,33 @@ export default function DeploymentDetailPage() {
     }
   };
 
+  const handleRollback = async () => {
+    const targetId =
+      deployment?.id || (deploymentId !== "latest" ? deploymentId : null);
+    if (!targetId || !project) return;
+
+    setRollingBack(true);
+    const baseUrl =
+      process.env.NEXT_PUBLIC_CONTROL_PANEL_URL || "https://api.x44.diy";
+    try {
+      await authClient.$fetch(
+        `${baseUrl}/api/projects/${project.id}/rollback`,
+        {
+          method: "POST",
+          body: { deployment_id: targetId },
+        },
+      );
+      setProject((prev) =>
+        prev ? { ...prev, current_deployment_id: targetId } : null,
+      );
+      router.refresh();
+    } catch (err) {
+      console.error("Rollback failed:", err);
+    } finally {
+      setRollingBack(false);
+    }
+  };
+
   const effectiveStatus = useMemo(() => {
     if (forcedStatus) return forcedStatus;
     if (deployment?.status) return deployment.status;
@@ -154,6 +158,17 @@ export default function DeploymentDetailPage() {
 
   const canRetry =
     effectiveStatus === "failed" || effectiveStatus === "cancelled";
+
+  const isCurrentProduction = useMemo(() => {
+    if (!project || !deployment) return false;
+    return Boolean(
+      project.current_deployment_id &&
+      project.current_deployment_id === deployment.id,
+    );
+  }, [project, deployment]);
+
+  const canRollback =
+    effectiveStatus === "success" && !isCurrentProduction && !isBuilding;
 
   const activeDeploymentId =
     deployment?.id || (deploymentId !== "latest" ? deploymentId : "");
@@ -430,8 +445,8 @@ export default function DeploymentDetailPage() {
     <div className="mx-auto flex w-full max-w-5xl flex-col px-4 py-10 sm:px-6 lg:px-8">
       {/* Top Header */}
       <div className="flex flex-col justify-between gap-6 sm:flex-row sm:items-start">
-        <div className="flex flex-col gap-2 overflow-hidden">
-          <h1 className="font-serif text-5xl font-bold text-white sm:text-5xl truncate">
+        <div className="flex flex-col gap-2 min-w-0">
+          <h1 className="font-serif text-5xl font-bold text-white sm:text-5xl truncate leading-tight py-1 pl-1 -ml-1">
             {projectName}
           </h1>
 
@@ -471,10 +486,12 @@ export default function DeploymentDetailPage() {
             <div className="flex flex-col items-start sm:items-end">
               <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-950/40 px-3 py-1 text-xs font-semibold tracking-wider text-emerald-400">
                 <CheckCircle2 className="h-3.5 w-3.5" />
-                DEPLOYED
+                {isCurrentProduction ? "LIVE" : "DEPLOYED"}
               </span>
               <span className="mt-1 text-[11px] text-neutral-500">
-                Live and serving globally.
+                {isCurrentProduction
+                  ? "Live and serving globally."
+                  : "Previous deployment."}
               </span>
             </div>
           )}
@@ -524,7 +541,9 @@ export default function DeploymentDetailPage() {
         <div className="mt-8 flex flex-col justify-between gap-4 rounded-xl border border-neutral-850 bg-neutral-950/70 p-6 sm:flex-row sm:items-center">
           <div>
             <h2 className="text-sm font-medium text-neutral-400">
-              Your deployment is live.
+              {isCurrentProduction
+                ? "Your deployment is live."
+                : "Previous build."}
             </h2>
             <div className="mt-1">
               <a
@@ -539,7 +558,7 @@ export default function DeploymentDetailPage() {
             </div>
           </div>
 
-          <div>
+          <div className="flex items-center gap-2">
             <Button
               onClick={() => window.open(`https://${productionUrl}`, "_blank")}
               className="gap-2 border border-neutral-700 bg-neutral-900 text-xs font-medium text-white hover:bg-neutral-800"
@@ -547,6 +566,19 @@ export default function DeploymentDetailPage() {
               Visit site
               <ExternalLink className="h-3.5 w-3.5" />
             </Button>
+
+            {canRollback && (
+              <Button
+                onClick={handleRollback}
+                disabled={rollingBack}
+                className="gap-1.5 bg-white text-xs font-medium text-black hover:bg-neutral-200"
+              >
+                <RotateCcw
+                  className={`h-3.5 w-3.5 ${rollingBack ? "animate-[spin_1s_linear_infinite_reverse]" : ""}`}
+                />
+                {rollingBack ? "Restoring..." : "Rollback to this"}
+              </Button>
+            )}
           </div>
         </div>
       )}

@@ -8,32 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { authClient } from "@/lib/auth-client";
 import { ProjectSettings } from "@/components/project-settings";
-
-type Project = {
-  id: string;
-  user_id: string;
-  name: string;
-  repo_url: string;
-  build_command: string;
-  root_dir: string;
-  output_directory: string;
-  subdomain: string;
-  branches: string;
-  createdAt: number | string | Date;
-  updatedAt: number | string | Date;
-};
-
-type DeploymentItem = {
-  id: string;
-  project_id: string;
-  branch: string;
-  commit_hash: string;
-  commit_message: string;
-  commit_author: string;
-  status: "queued" | "building" | "success" | "failed" | "cancelled";
-  createdAt: number | string | Date;
-  updatedAt: number | string | Date;
-};
+import { Project, Deployment as DeploymentItem } from "@x44/types";
 
 function formatRelativeTime(dateInput?: number | string | Date) {
   if (!dateInput) return "Recently";

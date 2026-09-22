@@ -36,19 +36,21 @@ app.get("*", async (c) => {
   }
 
   const query = `
-    SELECT d.id AS deployment_id 
-    FROM projects p 
-    JOIN deployments d ON d.project_id = p.id 
-    WHERE p.subdomain = ? AND d.status = 'success' 
-    ORDER BY d.created_at DESC 
-    LIMIT 1
+    SELECT
+    COALESCE(
+      p.current_deployment_id,
+      (SELECT d.id FROM deployments d WHERE d.project_id = p.id AND status = 'success' ORDER BY d.created_at DESC LIMIT 1)
+      ) AS deployment_id
+      FROM projects p 
+      WHERE p.subdomain = ?
+      LIMIT 1
   `;
 
   const record = await c.env.DB.prepare(query)
     .bind(subdomain)
-    .first<{ deployment_id: string }>();
+    .first<{ deployment_id: string | null }>();
 
-  if (!record) {
+  if (!record?.deployment_id) {
     return c.text("Not found", 404);
   }
 

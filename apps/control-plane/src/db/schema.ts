@@ -23,6 +23,7 @@ export const projects = sqliteTable(
     output_directory: text("output_directory").notNull().default("dist"),
     subdomain: text("subdomain").notNull().unique(),
     branches: text("branches").notNull(),
+    current_deployment_id: text("current_deployment_id"),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
       .notNull(),
