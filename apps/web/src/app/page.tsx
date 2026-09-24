@@ -23,7 +23,7 @@ const architectureRows = [
     label: "INTERCEPT",
     description:
       "GitHub triggers a webhook when you push code. A Cloudflare Worker catches it, checks the signature, and tells the VPS to start building.",
-    image: "/intercept.png",
+    image: "/intercept.webp",
     alt: "Vertical branch node line graphic",
   },
   {
@@ -31,7 +31,7 @@ const architectureRows = [
     label: "ISOLATE",
     description:
       "The VPS spins up a fresh, isolated container to build your code. It keeps the build sandboxed so it doesn't crash the server or eat up all your RAM.",
-    image: "/isolate.png",
+    image: "/isolate.webp",
     alt: "Transparent isometric cube graphic",
   },
   {
@@ -39,7 +39,7 @@ const architectureRows = [
     label: "STREAM",
     description:
       "Once the build finishes, the assets are pushed straight to Cloudflare R2 storage. When people visit your site, Cloudflare serves the files directly so your VPS doesn't have to do any heavy lifting.",
-    image: "/stream.png",
+    image: "/stream.webp",
     alt: "Minimalist global network dots graphic",
   },
 ];
@@ -74,7 +74,7 @@ export default function Home() {
             href="/"
             className="transition-opacity duration-300 hover:opacity-80 active:opacity-60"
           >
-            <img src="/logo.png" alt="x44 logo" className="h-15 w-auto" />
+            <img src="/logo.webp" alt="x44 logo" className="h-15 w-auto" />
           </a>
           <button
             onClick={handleLogin}

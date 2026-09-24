@@ -32,6 +32,12 @@
     "logs": {
       "enabled": true,
       "invocation_logs": true,
+      "persist": true,
+    },
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "persist": true,
     },
   },
   "queues": {
