@@ -20,6 +20,7 @@ Spins up Docker containers to build Git repositories, uploads output assets to C
 - SPAs work out of the box with static sites support.
 - Root directory, build command or output directory can be changed from the dashboard.
 - Redeploy anytime with a single click.
+- Instantly rollback to any previous build in milliseconds.
 
 ---
 
@@ -48,7 +49,7 @@ API backend running on Cloudflare Workers. Handles project management, GitHub OA
 
 ### 3. `apps/subdomain-router`
 
-Wildcard edge router serving `*.x44.diy`. Queries D1 for the latest successful build and streams assets directly from R2.
+Wildcard edge router serving `*.x44.diy`. Queries D1 for the active deployment id and streams assets directly from R2.
 
 **Tech stack:**
 
@@ -64,7 +65,11 @@ Linux build daemon running an Axum web server. Receives build specifications, pr
 - Rust (Axum)
 - Docker CLI
 
-### 5. `packages/types`
+### 5. `build-runner`
+
+The actual docker container that clones and builds the repo.
+
+### 6. `packages/types`
 
 Shared TypeScript types and schemas used across the dashboard and control plane.
 
@@ -90,13 +95,20 @@ cp apps/control-plane/.env.example apps/control-plane/.env
 cp apps/build-worker/.env.example apps/build-worker/.env
 ```
 
-3. Start dev server [frontend & backend]:
+3. Build the docker container:
+
+```bash
+cd build-runner
+docker build -t custom-builder .
+```
+
+4. Start dev server [frontend & backend]:
 
 ```bash
 pnpm dev
 ```
 
-4. Start the build worker(make sure Docker is running):
+5. Start the build worker(make sure Docker is running):
 
 ```bash
 cd apps/build-worker
