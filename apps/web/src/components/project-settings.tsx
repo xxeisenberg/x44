@@ -62,8 +62,8 @@ export function ProjectSettings({ project, onUpdate }: ProjectSettingsProps) {
           body: { repo_full_name: repoFullName },
         });
 
-        if (Array.isArray(res?.branches)) {
-          setBranches(res.branches);
+        if (Array.isArray(res?.data?.branches)) {
+          setBranches(res.data.branches);
         }
       } catch (err) {
         console.error("Failed to load branches:", err);
