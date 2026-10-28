@@ -8,6 +8,10 @@ A lightweight, self-hosted deployment platform for static sites and single-page 
 
 Spins up Docker containers to build Git repositories, uploads output assets to Cloudflare R2, and serves them globally.
 
+### Demo
+
+https://github.com/user-attachments/assets/633c7a64-4a8f-4ae1-9fb4-51d4bd20e442
+
 ---
 
 ## Features
